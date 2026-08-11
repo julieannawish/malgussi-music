@@ -118,6 +118,9 @@ input[type=range]{width:100%;accent-color:#2457A6}
 }
 .storage-title{font-size:17px;font-weight:900;margin-bottom:6px}
 .storage-info{font-size:15px;line-height:1.6;color:#665D58}
+.secondary-action{margin-top:8px!important;background:#F7F3EE!important;color:#6B5548!important;border:1px solid #E5D6C8!important}
+.relink-help{font-size:13px;line-height:1.5;color:#776B63;margin:8px 4px 2px}
+
 
 .track-row.disconnected{background:#FFF9F2;border-color:#F0CFA8}
 .track-state{font-size:12px;color:#C06A18;margin-left:auto;white-space:nowrap}
@@ -152,12 +155,14 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.24</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.25</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
-    <button id="btnRelink" class="playlist-add" style="margin-top:10px">🔗 원본 음악 다시 연결</button>
+    <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 한 번 선택 → 전체 자동 연결</button>
+    <button id="btnRelinkFiles" class="playlist-add secondary-action">🎵 파일 여러 개 선택해서 연결</button>
+    <div class="relink-help">음악이 들어 있는 폴더를 한 번만 선택하면 목록의 곡을 자동으로 찾아 연결합니다.</div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
@@ -184,9 +189,10 @@ input[type=file]{display:none}
     <button id="btnRepeat" class="menu green repeat-on">↻　계속 듣기: 켜짐　›</button>
     <button id="btnAdd" class="menu orange">＋　내 음악 넣기　›</button>
 
-    <input id="files" type="file" multiple>
+    <input id="files" type="file" multiple accept="audio/*,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
+    <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <div id="status" class="status"></div>
-    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다시 열면 원본 음악을 다시 연결할 수 있습니다.</div>
+    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
@@ -194,7 +200,7 @@ input[type=file]{display:none}
 
 <script>
 
-const APP_VERSION='V3.24 PURE INDEX';
+const APP_VERSION='V3.25 FOLDER RELINK';
 const KEY='playlist_index_v321';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -449,6 +455,11 @@ $('files').addEventListener('change',async e=>{
   e.target.value='';
 });
 
+$('folderFiles').addEventListener('change',async e=>{
+  await relinkFromFolder(e.target.files);
+  e.target.value='';
+});
+
 async function loadCurrent(autoplay){
   if(!playlist.length){updateUI();return}
   index=Math.max(0,Math.min(index,playlist.length-1));
@@ -606,6 +617,95 @@ function renderPlaylist(){
   });
 }
 
+
+function relinkFromFolder(files){
+  const arr=Array.from(files||[]).filter(isAudioFile);
+  const missingBefore=playlist.filter(t=>!fileMap.has(t.id)).length;
+
+  if(!missingBefore){
+    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
+    return;
+  }
+  if(!arr.length){
+    $('status').textContent='선택한 폴더에서 음악 파일을 찾지 못했습니다.';
+    return;
+  }
+
+  $('status').textContent=`폴더의 음악 ${arr.length}개를 확인하는 중입니다…`;
+
+  let connected=0, ambiguous=0;
+  const used=new Set();
+
+  // Folder mode is intentionally RELINK-ONLY: it never adds unrelated files
+  // from the selected folder to the playlist.
+  for(const t of playlist){
+    if(fileMap.has(t.id)) continue;
+
+    const candidates=arr.filter(f=>{
+      if(used.has(f)) return false;
+      const fn=exactFileName(f.name);
+      const nn=normalizeFileName(f.name);
+      return (fn===exactFileName(t.name) && Number(f.size||0)===Number(t.size||0)) ||
+             (nn===normalizeFileName(t.name) && Number(f.size||0)===Number(t.size||0));
+    });
+
+    if(candidates.length===1){
+      fileMap.set(t.id,candidates[0]);
+      used.add(candidates[0]);
+      connected++;
+      continue;
+    }
+
+    // If size differs (e.g. an exported copy), allow a unique filename match.
+    const uniqueName=arr.filter(f=>{
+      if(used.has(f)) return false;
+      return exactFileName(f.name)===exactFileName(t.name);
+    });
+    if(uniqueName.length===1){
+      fileMap.set(t.id,uniqueName[0]);
+      used.add(uniqueName[0]);
+      connected++;
+      continue;
+    }
+
+    if(candidates.length>1 || uniqueName.length>1) ambiguous++;
+  }
+
+  renderPlaylist();
+  renderStorageInfo();
+  updateUI();
+
+  const remaining=playlist.filter(t=>!fileMap.has(t.id)).length;
+  if(remaining===0){
+    $('status').textContent=`좋아요! ${connected}곡을 자동으로 모두 연결했습니다.`;
+  }else if(ambiguous){
+    $('status').textContent=`${connected}곡 자동 연결 · ${remaining}곡은 이름이 중복되어 확인이 필요합니다.`;
+  }else{
+    $('status').textContent=`${connected}곡 자동 연결 · ${remaining}곡은 이 폴더에서 찾지 못했습니다.`;
+  }
+
+  if(playlist.length && fileMap.has(playlist[index]?.id)){
+    loadCurrent(false);
+  }
+}
+
+function relinkFolder(){
+  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
+  if(!missing){
+    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
+    return;
+  }
+
+  const picker=$('folderFiles');
+  if('webkitdirectory' in picker){
+    $('status').textContent=`음악 폴더를 선택하면 ${missing}곡을 자동으로 찾아 연결합니다.`;
+    picker.click();
+  }else{
+    $('status').textContent='이 브라우저에서는 폴더 선택을 지원하지 않아 파일 여러 개 선택으로 진행합니다.';
+    $('files').click();
+  }
+}
+
 function relinkFiles(){
   const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
   if(!missing){
@@ -615,7 +715,8 @@ function relinkFiles(){
   $('status').textContent=`원본 연결이 필요한 ${missing}곡을 한꺼번에 선택해 주세요.`;
   $('files').click();
 }
-$('btnRelink').onclick=relinkFiles;
+$('btnRelink').onclick=relinkFolder;
+$('btnRelinkFiles').onclick=relinkFiles;
 
 function clearAllIndex(){
   if(!playlist.length){

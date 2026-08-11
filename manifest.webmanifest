@@ -1,7 +1,7 @@
 {
   "name": "말구씨 음악 앱",
   "short_name": "말구씨 음악",
-  "start_url": "./?v=324",
+  "start_url": "./?v=325",
   "scope": "./",
   "display": "standalone",
   "background_color": "#FFFCF8",
