@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="app-icon.png">
+<link rel="icon" type="image/png" href="app-icon-192.png">
 <title>말구씨 음악 앱</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
@@ -44,8 +46,12 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .playlist-screen{
   position:fixed; inset:0; z-index:100;
   background:#FFFCF8;
-  display:none; overflow:auto;
+  display:none;
+  overflow-y:auto; overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
   padding:18px 16px 28px;
+  box-sizing:border-box;
 }
 .playlist-screen.open{display:block}
 .playlist-head{
@@ -69,12 +75,12 @@ input[type=range]{width:100%;accent-color:#2457A6}
   background:#fff;border:1px solid #eadfd7;
   border-radius:16px;padding:9px 10px;margin-bottom:8px;
   box-shadow:0 1px 5px rgba(58,36,26,.06);
-  touch-action:none;
+  touch-action:pan-y;
   user-select:none;
   -webkit-user-select:none;
   -webkit-touch-callout:none;
   cursor:grab;
-  overscroll-behavior:none;
+  overscroll-behavior-y:contain;
 }
 .track-row.current{border:2px solid #2457A6;background:#F4F8FF}
 .track-row.dragging{opacity:.55;transform:scale(.99)}
@@ -90,7 +96,7 @@ input[type=range]{width:100%;accent-color:#2457A6}
   flex:1;min-width:0;text-align:left;
   background:transparent;padding:7px 4px;
   color:#3A241A;font-size:16px;font-weight:800;
-  touch-action:none;
+  touch-action:pan-y;
   -webkit-user-select:none;
   user-select:none;
 }
@@ -146,7 +152,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.14</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.21</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -158,7 +164,7 @@ input[type=file]{display:none}
   <h1>🎵 말구씨 음악 앱</h1>
   <div class="sub">내 음악을 편하게 듣는 작은 음악상자</div>
   <div class="card">
-    <img id="mainImage" class="art" src="" alt="앨범 이미지 없음">
+    <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
     <div id="now" class="now">음악을 넣어 주세요</div>
     <div id="count" class="count">아직 음악이 없습니다</div>
 
@@ -188,8 +194,8 @@ input[type=file]{display:none}
 
 <script>
 
-const APP_VERSION='V3.14 PURE INDEX';
-const KEY='playlist_index_v314';
+const APP_VERSION='V3.21 PURE INDEX';
+const KEY='playlist_index_v321';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
 
@@ -238,10 +244,12 @@ function isAudioFile(f){
   return allowed.includes(ext) || (f.type||'').toLowerCase().startsWith('audio/');
 }
 
+
 function decodeText(bytes){
   try{return new TextDecoder('utf-8').decode(bytes).replace(/\0/g,'').trim()}catch(e){return ''}
 }
 function synchsafe(b){return (b[0]<<21)|(b[1]<<14)|(b[2]<<7)|b[3]}
+
 function parseID3Artwork(buf){
   const b=new Uint8Array(buf);
   if(b.length<10 || b[0]!==0x49 || b[1]!==0x44 || b[2]!==0x33) return null;
@@ -274,6 +282,75 @@ function parseID3Artwork(buf){
   }
   return null;
 }
+
+/* Basic ISO-BMFF/MP4 scanner for iTunes-style cover art (covr).
+   We only read the current File temporarily; no audio bytes are stored. */
+function parseMP4Artwork(buf){
+  const b=new Uint8Array(buf);
+  function u32(p){return ((b[p]<<24)|(b[p+1]<<16)|(b[p+2]<<8)|b[p+3])>>>0}
+  function type(p){return String.fromCharCode(b[p],b[p+1],b[p+2],b[p+3])}
+  function scan(start,end){
+    let p=start;
+    while(p+8<=end){
+      let size=u32(p), typ=type(p+4), head=8;
+      if(size===1){
+        if(p+16>end)return null;
+        const hi=u32(p+8),lo=u32(p+12);
+        size=hi*4294967296+lo; head=16;
+      }else if(size===0){
+        size=end-p;
+      }
+      if(size<head || p+size>end)return null;
+      const a=p+head, z=p+size;
+      if(typ==='covr'){
+        let q=a;
+        while(q+8<=z){
+          let s=u32(q), t=type(q+4), h=8;
+          if(s===0)s=z-q;
+          if(s<h || q+s>z)break;
+          const payload=b.slice(q+h,q+s);
+          if(t==='data' && payload.length>8){
+            const flags=(payload[0]<<24)|(payload[1]<<16)|(payload[2]<<8)|payload[3];
+            const img=payload.slice(8);
+            let mime='image/jpeg';
+            if(img[0]===0x89&&img[1]===0x50&&img[2]===0x4e&&img[3]===0x47)mime='image/png';
+            if(img.length>20 && (mime==='image/jpeg'||mime==='image/png'))
+              return {mime,bytes:img};
+          }
+          q+=s;
+        }
+      }
+      if(['moov','udta','meta','ilst','----'].includes(typ)){
+        const r=scan(a+(typ==='meta'?4:0),z);
+        if(r)return r;
+      }
+      p+=size;
+    }
+    return null;
+  }
+  return scan(0,b.length);
+}
+
+async function extractArtwork(file){
+  try{
+    const name=(file.name||'').toLowerCase();
+    // Read only temporarily to obtain embedded cover art.
+    const buf=await file.arrayBuffer();
+    let art=null;
+    if(name.endsWith('.mp3')) art=parseID3Artwork(buf);
+    if(!art && (name.endsWith('.m4a')||name.endsWith('.mp4')||name.endsWith('.m4b')||name.endsWith('.aac')))
+      art=parseMP4Artwork(buf);
+    return art;
+  }catch(e){
+    return null;
+  }
+}
+
+function artworkToUrl(art){
+  if(!art||!art.bytes)return null;
+  return URL.createObjectURL(new Blob([art.bytes],{type:art.mime||'image/jpeg'}));
+}
+
 function findExistingByFile(f){
   return playlist.find(t=>
     t.name===f.name &&
@@ -343,7 +420,11 @@ async function loadCurrent(autoplay){
     audio.removeAttribute('src');
     $('now').textContent=t.name;
     $('count').textContent=`${index+1}곡 중 ${playlist.length}곡 · 원본 연결 필요`;
-    $('mainImage').src='';
+    if($('mainImage').dataset.url){
+      URL.revokeObjectURL($('mainImage').dataset.url);
+      $('mainImage').removeAttribute('data-url');
+    }
+    $('mainImage').src='dog_default.png';
     $('mainImage').alt='원본 음악을 다시 연결해 주세요';
     $('status').textContent='이 곡의 원본 파일이 연결되지 않았습니다. 재생목록 관리에서 「원본 음악 다시 연결」을 눌러 주세요.';
     updateUI();
@@ -356,15 +437,38 @@ async function loadCurrent(autoplay){
   $('now').textContent=t.name;
   $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
 
+  if($('mainImage').dataset.url){
+    URL.revokeObjectURL($('mainImage').dataset.url);
+    $('mainImage').removeAttribute('data-url');
+  }
+
   if(artworkMap.has(t.id)){
-    if($('mainImage').dataset.url)URL.revokeObjectURL($('mainImage').dataset.url);
     const u=artworkToUrl(artworkMap.get(t.id));
-    $('mainImage').src=u;
-    $('mainImage').dataset.url=u;
-    $('mainImage').alt='앨범 이미지';
+    if(u){
+      $('mainImage').src=u;
+      $('mainImage').dataset.url=u;
+      $('mainImage').alt='앨범 커버';
+    }else{
+      $('mainImage').src='dog_default.png';
+      $('mainImage').alt='말구씨 기본 강아지 이미지';
+    }
   }else{
-    $('mainImage').src='';
-    $('mainImage').alt='앨범 이미지 없음';
+    $('mainImage').src='dog_default.png';
+    $('mainImage').alt='말구씨 기본 강아지 이미지';
+    // Extract only for the current song; the audio file itself is never stored.
+    extractArtwork(f).then(art=>{
+      if(playlist[index]?.id===t.id){
+        if(art) artworkMap.set(t.id,art);
+        if($('mainImage').dataset.url){
+          URL.revokeObjectURL($('mainImage').dataset.url);
+          $('mainImage').removeAttribute('data-url');
+        }
+        const u=art?artworkToUrl(art):null;
+        $('mainImage').src=u||'dog_default.png';
+        if(u)$('mainImage').dataset.url=u;
+        $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
+      }
+    });
   }
 
   audio.load();
@@ -424,7 +528,8 @@ function renderPlaylist(){
     main.onclick=async()=>{
       index=i;
       if(!fileMap.has(t.id)){
-        $('status').textContent='이 곡은 원본 파일 연결이 필요합니다.';
+        const missing=playlist.filter(x=>!fileMap.has(x.id)).length;
+        $('status').textContent=`원본 연결이 필요한 ${missing}곡을 한꺼번에 선택해 주세요.`;
         $('files').click();
         return;
       }
@@ -461,7 +566,12 @@ function renderPlaylist(){
 }
 
 function relinkFiles(){
-  $('status').textContent='원본 음악 파일을 선택해 주세요. 같은 파일명·크기·수정일이면 자동으로 연결됩니다.';
+  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
+  if(!missing){
+    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
+    return;
+  }
+  $('status').textContent=`원본 연결이 필요한 ${missing}곡을 한꺼번에 선택해 주세요.`;
   $('files').click();
 }
 $('btnRelink').onclick=relinkFiles;
@@ -482,8 +592,9 @@ function clearAllIndex(){
   audio.removeAttribute('src');
   $('now').textContent='음악을 넣어 주세요';
   $('count').textContent='아직 음악이 없습니다';
-  $('mainImage').src='';
+  if($('mainImage').dataset.url)URL.revokeObjectURL($('mainImage').dataset.url);
   $('mainImage').removeAttribute('data-url');
+  $('mainImage').src='dog_default.png';
   renderPlaylist();
   renderStorageInfo();
   updateUI();
@@ -492,6 +603,7 @@ function clearAllIndex(){
 $('btnClearStored').onclick=clearAllIndex;
 
 let dragIndex=null,dragRow=null,dragMode=null,dragStartY=0,dragMoved=false;
+
 function clearDropTargets(){
   document.querySelectorAll('.track-row.drop-target').forEach(el=>el.classList.remove('drop-target'));
 }
@@ -529,53 +641,95 @@ function finishDrag(clientY){
   dragRow=null;dragIndex=null;dragMode=null;dragMoved=false;
   renderPlaylist();
 }
+
 function setupDrag(row){
-  let mode=null,moved=false,startY=0,pointerId=null;
-  const begin=(y,m,id=null)=>{
-    dragIndex=Number(row.dataset.index);dragRow=row;dragStartY=y;startY=y;
-    dragMoved=false;moved=false;mode=m;pointerId=id;row.classList.add('dragging');
+  let mode=null,moved=false,startY=0,pointerId=null,timer=null;
+
+  const clearTimer=()=>{if(timer){clearTimeout(timer);timer=null}};
+  const beginDrag=(y,id=null)=>{
+    dragIndex=Number(row.dataset.index);
+    dragRow=row;
+    dragStartY=y;
+    moved=false;
+    dragMoved=false;
+    mode='touch-drag';
+    pointerId=id;
+    row.classList.add('dragging');
   };
-  const move=y=>{
-    if(!dragRow||dragRow!==row)return;
-    if(Math.abs(y-startY)>4){moved=true;dragMoved=true}
-    if(moved)showDropTarget(y);
-  };
-  const finish=y=>{
-    if(!dragRow||dragRow!==row)return;
-    if(moved)finishDrag(y);else cancelDrag();
-    mode=null;pointerId=null;
-  };
+
   const touchMove=e=>{
-    if(mode!=='touch'||!dragRow||!e.touches.length)return;
-    const t=Array.from(e.touches).find(x=>x.identifier===pointerId);if(!t)return;
-    e.preventDefault();move(t.clientY);
+    if(!e.touches.length)return;
+    const t=Array.from(e.touches).find(x=>x.identifier===pointerId);
+    if(!t)return;
+    const dy=Math.abs(t.clientY-startY);
+
+    // Before long-press activates, let iPhone scroll normally.
+    if(mode==='touch-pending'){
+      if(dy>8){
+        clearTimer();
+        mode=null;
+        pointerId=null;
+      }
+      return;
+    }
+
+    if(mode==='touch-drag'){
+      e.preventDefault();
+      moved=true;
+      showDropTarget(t.clientY);
+    }
   };
+
   const touchEnd=e=>{
-    if(mode!=='touch'||!dragRow)return;
+    clearTimer();
     const t=Array.from(e.changedTouches).find(x=>x.identifier===pointerId);
-    const y=t?t.clientY:startY;e.preventDefault();finish(y);
+    if(mode==='touch-drag'){
+      const y=t?t.clientY:startY;
+      e.preventDefault();
+      finishDrag(y);
+    }
+    mode=null;pointerId=null;
     document.removeEventListener('touchmove',touchMove,{passive:false});
     document.removeEventListener('touchend',touchEnd,{passive:false});
     document.removeEventListener('touchcancel',touchEnd,{passive:false});
   };
+
   row.addEventListener('touchstart',e=>{
-    if(e.touches.length!==1)return;
-    if(e.target.closest('.track-delete'))return;
-    const t=e.touches[0];begin(t.clientY,'touch',t.identifier);e.preventDefault();
+    if(e.touches.length!==1 || e.target.closest('.track-delete'))return;
+    const t=e.touches[0];
+    startY=t.clientY;
+    pointerId=t.identifier;
+    mode='touch-pending';
+    timer=setTimeout(()=>{
+      if(mode==='touch-pending'){
+        beginDrag(startY,pointerId);
+      }
+    },420);
     document.addEventListener('touchmove',touchMove,{passive:false});
     document.addEventListener('touchend',touchEnd,{passive:false});
     document.addEventListener('touchcancel',touchEnd,{passive:false});
-  },{passive:false});
+  },{passive:true});
+
   row.addEventListener('mousedown',e=>{
     if(e.button!==0||e.target.closest('.track-delete'))return;
-    begin(e.clientY,'mouse');e.preventDefault();
-    const mm=ev=>move(ev.clientY),mu=ev=>{
+    dragIndex=Number(row.dataset.index);
+    dragRow=row;
+    dragStartY=e.clientY;
+    mode='mouse';
+    row.classList.add('dragging');
+    e.preventDefault();
+
+    const mm=ev=>showDropTarget(ev.clientY);
+    const mu=ev=>{
       document.removeEventListener('mousemove',mm);
-      document.removeEventListener('mouseup',mu);finish(ev.clientY);
+      document.removeEventListener('mouseup',mu);
+      finishDrag(ev.clientY);
     };
-    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+    document.addEventListener('mousemove',mm);
+    document.addEventListener('mouseup',mu);
   });
 }
+
 function cancelDrag(){
   clearDropTargets();
   if(dragRow)dragRow.classList.remove('dragging');
