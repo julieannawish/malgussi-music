@@ -149,6 +149,8 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .help{text-align:center;color:#665D58;font-size:14px;margin-top:12px;line-height:1.45}
 .status{text-align:center;min-height:20px;color:#665D58;font-size:13px;margin:7px 0}
 input[type=file]{display:none}
+ .video-player{width:100%;aspect-ratio:16/9;display:none!important;background:#111;object-fit:contain;border-radius:18px;position:relative;z-index:5}
+.video-player.is-visible{display:block!important}
 </style>
 
 <script data-build-guard>
@@ -158,7 +160,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','336');
+    u.searchParams.set('v','337');
     location.replace(u.toString());
   }
 })();
@@ -175,7 +177,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.36</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.37</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -215,7 +217,7 @@ input[type=file]{display:none}
   </div>
 </div>
 
-<audio id="audio" preload="metadata" playsinline></audio><video id="mainVideo" class="art video-art" controls playsinline preload="metadata" hidden></video>
+<audio id="audio" preload="metadata" playsinline></audio><video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="metadata"></video>
 
 <script>
 
@@ -283,7 +285,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.36';
+const APP_VERSION='V3.37';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -308,28 +310,20 @@ function setMediaSource(f){
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
 
-  video.classList.remove('video-active');
+  audio.pause(); audio.removeAttribute('src'); audio.load();
+  video.pause(); video.removeAttribute('src'); video.load();
+  video.classList.remove('is-visible');
   video.hidden=true;
   $('mainImage').hidden=false;
 
   if(isVideoFile(f)){
-    audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
-
     activeMedia=video;
+    $('mainImage').hidden=true;
     video.src=objectUrl;
     video.hidden=false;
-    video.classList.add('video-active');
-    $('mainImage').hidden=true;
-
-    // Force iOS Safari to re-read the selected MP4.
+    video.classList.add('is-visible');
     video.load();
   }else{
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-
     activeMedia=audio;
     audio.src=objectUrl;
     audio.load();
@@ -752,8 +746,8 @@ function renderPlaylist(){
 }
 
 
-// V3.36: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.36_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.37: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.37_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1088,7 +1082,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=336',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=337',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});

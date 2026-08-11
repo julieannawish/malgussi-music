@@ -1,4 +1,4 @@
-const CACHE='malgussi-v3-36';
+const CACHE='malgussi-v3-37-mp4-video';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
 self.addEventListener('message', event=>{
