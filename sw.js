@@ -1,9 +1,18 @@
-const CACHE='malgussi-v3-34-mp4';
+const CACHE='malgussi-v3-35-cachefix';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
-self.addEventListener('install', event=>{
-  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()));
+self.addEventListener('message', event=>{
+  if(event.data && event.data.type==='SKIP_WAITING') self.skipWaiting();
 });
+
+self.addEventListener('install', event=>{
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(c=>c.addAll(CORE))
+      .then(()=>self.skipWaiting())
+  );
+});
+
 self.addEventListener('activate', event=>{
   event.waitUntil(
     caches.keys()
@@ -11,17 +20,19 @@ self.addEventListener('activate', event=>{
       .then(()=>self.clients.claim())
   );
 });
+
 self.addEventListener('fetch', event=>{
   if(event.request.method!=='GET') return;
   const url=new URL(event.request.url);
   if(url.origin!==location.origin) return;
 
-  const shell = url.pathname.endsWith('/') ||
-                url.pathname.endsWith('/index.html') ||
-                url.pathname.endsWith('/manifest.webmanifest') ||
-                url.pathname.endsWith('/sw.js');
+  const isShell =
+    url.pathname.endsWith('/') ||
+    url.pathname.endsWith('/index.html') ||
+    url.pathname.endsWith('/manifest.webmanifest') ||
+    url.pathname.endsWith('/sw.js');
 
-  if(shell){
+  if(isShell){
     event.respondWith(
       fetch(event.request,{cache:'no-store'})
         .then(resp=>{
