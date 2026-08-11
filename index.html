@@ -19,7 +19,7 @@ button{font:inherit;border:0}
 h1{text-align:center;font-size:25px;margin:0 0 4px;font-weight:800}
 .sub{text-align:center;color:#665D58;font-size:14px;margin-bottom:10px}
 .card{background:#fff;border-radius:22px;padding:12px;box-shadow:0 2px 12px rgba(58,36,26,.08)}
-.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.video-art{background:#111}
+.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.video-art{background:#111;display:none}.video-art.video-active{display:block}
 .now{text-align:center;font-size:19px;font-weight:800;margin:10px 4px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .count{text-align:center;color:#665D58;font-size:14px;margin-bottom:6px}
 .controls{display:flex;align-items:center;gap:8px;margin-top:8px}
@@ -158,7 +158,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','335');
+    u.searchParams.set('v','336');
     location.replace(u.toString());
   }
 })();
@@ -175,7 +175,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.35</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.36</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -189,8 +189,8 @@ input[type=file]{display:none}
   <div class="sub">내 음악을 편하게 듣는 작은 음악상자</div>
   <div class="card">
     <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
-    <div id="now" class="now">음악을 넣어 주세요</div>
-    <div id="count" class="count">아직 음악이 없습니다</div>
+    <div id="now" class="now">음악 또는 동영상을 넣어 주세요</div>
+    <div id="count" class="count">아직 음악 또는 동영상이 없습니다</div>
 
     <div class="controls">
       <button id="btnPrev" class="prevnext"><span class="icon">⏮</span><span class="label">이전</span></button>
@@ -283,7 +283,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.35 FINAL';
+const APP_VERSION='V3.36';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -307,15 +307,32 @@ function isMediaFile(f){ return isVideoFile(f) || isAudioFile(f); }
 function setMediaSource(f){
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
+
+  video.classList.remove('video-active');
+  video.hidden=true;
+  $('mainImage').hidden=false;
+
   if(isVideoFile(f)){
-    audio.pause(); audio.removeAttribute('src'); audio.load();
-    video.src=objectUrl; video.hidden=false;
-    $('mainImage').hidden=true;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+
     activeMedia=video;
+    video.src=objectUrl;
+    video.hidden=false;
+    video.classList.add('video-active');
+    $('mainImage').hidden=true;
+
+    // Force iOS Safari to re-read the selected MP4.
+    video.load();
   }else{
-    video.pause(); video.removeAttribute('src'); video.load();
-    video.hidden=true; $('mainImage').hidden=false;
-    audio.src=objectUrl; activeMedia=audio;
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    activeMedia=audio;
+    audio.src=objectUrl;
+    audio.load();
   }
 }
 
@@ -514,7 +531,7 @@ function findExistingByFile(f){
 async function addFiles(files){
   const arr=Array.from(files||[]).filter(isMediaFile);
   if(!arr.length){
-    $('status').textContent='음악 파일을 선택해 주세요.';
+    $('status').textContent='음악 또는 MP4 동영상을 선택해 주세요.';
     return;
   }
 
@@ -536,7 +553,7 @@ async function addFiles(files){
       name:f.name,
       size:Number(f.size)||0,
       lastModified:Number(f.lastModified)||0,
-      type:f.type||'audio/mpeg'
+      type:f.type||(isVideoFile(f)?'video/mp4':'audio/mpeg')
     };
 
     // Store only the index record. The File object itself is NOT persisted.
@@ -677,7 +694,7 @@ $('btnRepeat').onclick=()=>{
 function renderPlaylist(){
   const box=$('playlistList');
   if(!playlist.length){
-    box.innerHTML='<div class="playlist-empty">아직 음악이 없습니다.<br>아래의 ＋ 음악 추가 버튼으로 음악을 넣어 주세요.</div>';
+    box.innerHTML='<div class="playlist-empty">아직 음악 또는 동영상이 없습니다.<br>아래의 ＋ 음악 추가 버튼으로 음악 또는 동영상을 넣어 주세요.</div>';
     return;
   }
   box.innerHTML='';
@@ -735,8 +752,8 @@ function renderPlaylist(){
 }
 
 
-// V3.35: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.35_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.36: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.36_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -832,8 +849,8 @@ function clearAllIndex(){
   audio.pause();
   if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
   audio.removeAttribute('src');
-  $('now').textContent='음악을 넣어 주세요';
-  $('count').textContent='아직 음악이 없습니다';
+  $('now').textContent='음악 또는 동영상을 넣어 주세요';
+  $('count').textContent='아직 음악 또는 동영상이 없습니다';
   if($('mainImage').dataset.url)URL.revokeObjectURL($('mainImage').dataset.url);
   $('mainImage').removeAttribute('data-url');
   $('mainImage').src='dog_default.png';
@@ -1006,6 +1023,23 @@ audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
 video.addEventListener('play',updateUI);
 video.addEventListener('pause',updateUI);
+video.addEventListener('loadedmetadata',()=>{
+  if(isVideoFile(fileMap.get(playlist[index]?.id)||{})){
+    $('status').textContent='동영상 준비 완료';
+  }
+});
+video.addEventListener('canplay',()=>{
+  if(activeMedia===video) $('status').textContent='동영상 재생 준비 완료';
+});
+video.addEventListener('error',()=>{
+  if(activeMedia!==video)return;
+  const code=video.error?.code;
+  const msg=code===3
+    ?'동영상 형식 또는 코덱을 iPhone에서 재생할 수 없습니다.'
+    :'동영상을 재생할 수 없습니다. MP4(H.264/AAC) 파일인지 확인해 주세요.';
+  $('status').textContent=msg;
+});
+
 function advanceAfterEnd(){
   if(!playlist.length)return;
   if(index<playlist.length-1){index++;loadCurrent(true)}
@@ -1037,7 +1071,7 @@ function updateUI(){
     :'<span class="icon">▶</span><span class="label">재생</span>';
   $('count').textContent=playlist.length
     ?`${index+1}곡 중 ${playlist.length}곡`
-    :'아직 음악이 없습니다';
+    :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
 loadIndex();
@@ -1054,7 +1088,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=335',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=336',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
