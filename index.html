@@ -149,8 +149,7 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .help{text-align:center;color:#665D58;font-size:14px;margin-top:12px;line-height:1.45}
 .status{text-align:center;min-height:20px;color:#665D58;font-size:13px;margin:7px 0}
 input[type=file]{display:none}
- .video-player{width:100%;aspect-ratio:16/9;display:none!important;background:#111;object-fit:contain;border-radius:18px;position:relative;z-index:5}
-.video-player.is-visible{display:block!important}
+ .video-player{width:100%;aspect-ratio:1/1;display:block;object-fit:contain;background:#111;border-radius:18px;position:relative;z-index:2}.video-player[hidden]{display:none!important}
 </style>
 
 <script data-build-guard>
@@ -160,7 +159,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','337');
+    u.searchParams.set('v','338');
     location.replace(u.toString());
   }
 })();
@@ -177,7 +176,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.37</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.38</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -191,6 +190,7 @@ input[type=file]{display:none}
   <div class="sub">내 음악을 편하게 듣는 작은 음악상자</div>
   <div class="card">
     <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
+    <video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="metadata" hidden></video>
     <div id="now" class="now">음악 또는 동영상을 넣어 주세요</div>
     <div id="count" class="count">아직 음악 또는 동영상이 없습니다</div>
 
@@ -217,7 +217,7 @@ input[type=file]{display:none}
   </div>
 </div>
 
-<audio id="audio" preload="metadata" playsinline></audio><video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="metadata"></video>
+<audio id="audio" preload="metadata" playsinline></audio>
 
 <script>
 
@@ -285,7 +285,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.37';
+const APP_VERSION='V3.38';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -310,10 +310,15 @@ function setMediaSource(f){
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
 
-  audio.pause(); audio.removeAttribute('src'); audio.load();
-  video.pause(); video.removeAttribute('src'); video.load();
-  video.classList.remove('is-visible');
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
   video.hidden=true;
+
   $('mainImage').hidden=false;
 
   if(isVideoFile(f)){
@@ -321,7 +326,6 @@ function setMediaSource(f){
     $('mainImage').hidden=true;
     video.src=objectUrl;
     video.hidden=false;
-    video.classList.add('is-visible');
     video.load();
   }else{
     activeMedia=audio;
@@ -613,6 +617,7 @@ async function loadCurrent(autoplay){
     $('mainImage').removeAttribute('data-url');
   }
 
+  if(!isVideoFile(f)){
   if(artworkMap.has(t.id)){
     const u=artworkToUrl(artworkMap.get(t.id));
     if(u){
@@ -640,6 +645,10 @@ async function loadCurrent(autoplay){
         $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
       }
     });
+  }
+
+  }else{
+    $('mainImage').hidden=true;
   }
 
   activeMedia.load();
@@ -746,8 +755,8 @@ function renderPlaylist(){
 }
 
 
-// V3.37: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.37_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.38: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.38_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1082,7 +1091,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=337',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=338',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
