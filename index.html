@@ -103,6 +103,21 @@ input[type=range]{width:100%;accent-color:#2457A6}
   flex:0 0 52px;width:52px;height:40px;border-radius:12px;
   background:#FFF1E3;color:#C95C00;font-size:14px;font-weight:800;
 }
+
+.storage-box{
+  max-width:720px;margin:12px auto 0;
+  background:#FFF8F0;border:1px solid #E8D7C6;
+  border-radius:16px;padding:14px 15px;
+  color:#4B372D;
+}
+.storage-title{font-size:17px;font-weight:900;margin-bottom:6px}
+.storage-info{font-size:15px;line-height:1.6;color:#665D58}
+.storage-delete{
+  margin-top:10px;width:100%;height:48px;border-radius:14px;
+  border:1px solid #E5B9A7;background:#FFF0EB;color:#B4472E;
+  font-size:16px;font-weight:800;
+}
+
 .playlist-add{
   max-width:720px;margin:14px auto 0;
   width:100%;height:54px;border-radius:16px;
@@ -125,6 +140,11 @@ input[type=file]{display:none}
   </div>
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
+  <div class="storage-box">
+    <div class="storage-title">💾 앱 저장공간</div>
+    <div id="storageInfo" class="storage-info">저장공간을 확인하는 중입니다…</div>
+    <button id="btnClearStored" class="storage-delete">앱에 저장된 음악 모두 삭제</button>
+  </div>
 </div>
   <h1>🎵 말구씨 음악 앱</h1>
   <div class="sub">내 음악을 편하게 듣는 작은 음악상자</div>
@@ -190,6 +210,79 @@ async function getTrack(id){
     r.onerror=()=>reject(r.error);
   });
 }
+
+async function deleteTrack(id){
+  const db=await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+async function getStorageInfo(){
+  const db=await openDB();
+  return new Promise((resolve,reject)=>{
+    const r=db.transaction(STORE).objectStore(STORE).getAll();
+    r.onsuccess=()=>{
+      const tracks=r.result||[];
+      const bytes=tracks.reduce((sum,t)=>sum+(t.blob?.size||0),0);
+      resolve({count:tracks.length,bytes});
+    };
+    r.onerror=()=>reject(r.error);
+  });
+}
+function formatBytes(bytes){
+  if(bytes<1024*1024) return `${(bytes/1024).toFixed(1)} KB`;
+  if(bytes<1024*1024*1024) return `${(bytes/1024/1024).toFixed(1)} MB`;
+  return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
+}
+async function renderStorageInfo(){
+  try{
+    const info=await getStorageInfo();
+    $('storageInfo').textContent=
+      `현재 앱에 저장된 음악 ${info.count}곡 · 사용 공간 약 ${formatBytes(info.bytes)}`;
+  }catch(e){
+    $('storageInfo').textContent='저장공간 정보를 확인할 수 없습니다.';
+  }
+}
+async function clearAllStoredMusic(){
+  const info=await getStorageInfo();
+  if(!info.count){
+    $('status').textContent='앱에 저장된 음악이 없습니다.';
+    await renderStorageInfo();
+    return;
+  }
+  const ok=confirm(
+    `앱에 저장된 ${info.count}곡(약 ${formatBytes(info.bytes)})을 모두 삭제할까요?\n\n`+
+    `아이폰의 원본 음악 파일은 삭제하지 않습니다.`
+  );
+  if(!ok)return;
+
+  const db=await openDB();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+
+  playlist=[];
+  index=0;
+  localStorage.removeItem(KEY);
+  audio.pause();
+  if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
+  audio.removeAttribute('src');
+  $('now').textContent='음악을 넣어 주세요';
+  $('count').textContent='아직 음악이 없습니다';
+  $('mainImage').src='';
+  $('mainImage').alt='앨범 이미지 없음';
+  updateUI();
+  renderPlaylist();
+  await renderStorageInfo();
+  $('status').textContent='앱에 저장된 음악을 모두 삭제했습니다.';
+}
+
 async function loadTracks(){
   try{
     const raw=localStorage.getItem(KEY);
@@ -354,6 +447,7 @@ function renderPlaylist(){
       del.title='삭제';
       del.onclick=async()=>{
         if(!confirm(`"${t.name}"을 재생목록에서 삭제할까요?`))return;
+        await deleteTrack(id);
         playlist.splice(i,1);
         if(index>i)index--;
         if(index>=playlist.length)index=Math.max(0,playlist.length-1);
@@ -518,6 +612,7 @@ function setupDrag(row){
 
 function openPlaylist(){
   renderPlaylist();
+  renderStorageInfo();
   $('playlistScreen').classList.add('open');
   $('playlistScreen').setAttribute('aria-hidden','false');
 }
@@ -528,6 +623,7 @@ function closePlaylist(){
 $('btnPlaylist').onclick=openPlaylist;
 $('btnClosePlaylist').onclick=closePlaylist;
 $('btnPlaylistAdd').onclick=()=>{$('files').click();};
+$('btnClearStored').onclick=clearAllStoredMusic;
 
 
 audio.addEventListener('timeupdate',()=>{
