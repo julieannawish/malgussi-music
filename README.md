@@ -1,9 +1,14 @@
-말구씨 음악 앱 V3.40 — iPhone 백그라운드 재생/잠금화면 컨트롤
+말구씨 음악 앱 V3.41 — 잠금화면 미디어 제어 보강 + MP4 작은 화면
 
-- HTML audio 기반 음악은 앱을 다른 앱으로 전환하거나 화면을 잠근 뒤에도 계속 재생되도록 Media Session API를 적용
-- iPhone 잠금화면/제어센터의 이전·재생·다음 미디어 컨트롤에 연결
-- 현재 곡 제목/앱 아이콘을 Now Playing 메타데이터로 제공
-- 곡 변경 시 metadata 자동 갱신
-- 재생/일시정지 상태 자동 동기화
-- 기존 음악/MP4 재생, 폴더 자동 연결, 없는 곡 정리 기능 유지
-- MP4 영상 자체의 백그라운드 영상 표시/재생은 iOS의 웹 미디어 정책상 별도 제약이 있으므로 이번 기능의 주 대상은 음악(audio)입니다.
+1. 음악 백그라운드 재생
+- Media Session 재생/일시정지/이전/다음 핸들러 유지
+- 첫 실제 재생 시 Media Session 핸들러와 현재 곡 정보를 다시 등록해 iPhone 잠금화면/제어센터 연동을 보강
+
+2. MP4 작은 화면(PiP)
+- MP4 재생 시 [작은 화면] 버튼 표시
+- Safari에서 지원되는 경우 WebKit presentation mode의 Picture-in-Picture 사용
+- 표준 requestPictureInPicture도 지원하면 fallback
+- 현재 환경에서 지원되지 않으면 버튼을 표시하지 않고, 시도 시 안내 문구 표시
+
+주의:
+iOS 홈 화면에 설치한 standalone PWA에서는 Picture-in-Picture가 Safari와 다르게 제한되는 WebKit 이슈가 현재 보고되어 있습니다. 따라서 지원 여부를 기능 탐지하여 안전하게 처리합니다.

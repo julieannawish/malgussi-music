@@ -152,6 +152,9 @@ input[type=file]{display:none}
  .video-player{width:100%;aspect-ratio:1/1;display:block;object-fit:contain;background:#111;border-radius:18px;position:relative;z-index:2}.video-player[hidden]{display:none!important}
 .art[hidden]{display:none!important}
 .video-player[hidden]{display:none!important}
+#btnPiP{display:none;min-height:58px;border:1px solid #9dbdff;border-radius:16px;background:#eef5ff;color:#2759a5;font-weight:700;padding:10px 16px}
+#btnPiP.is-available{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+#btnPiP:disabled{opacity:.45}
 </style>
 
 <script data-build-guard>
@@ -161,7 +164,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','340');
+    u.searchParams.set('v','341');
     location.replace(u.toString());
   }
 })();
@@ -178,7 +181,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.40</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.41</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -199,6 +202,7 @@ input[type=file]{display:none}
     <div class="controls">
       <button id="btnPrev" class="prevnext"><span class="icon">⏮</span><span class="label">이전</span></button>
       <button id="btnPlay" class="play"><span class="icon">▶</span><span class="label">재생</span></button>
+<button id="btnPiP" class="secondary-btn" type="button" title="작은 화면">▣<span>작은 화면</span></button>
       <button id="btnNext" class="prevnext"><span class="icon">⏭</span><span class="label">다음</span></button>
     </div>
 
@@ -215,7 +219,7 @@ input[type=file]{display:none}
     <input id="files" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <div id="status" class="status"></div>
-    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다른 앱으로 전환하거나 화면을 잠가도 음악 재생을 계속할 수 있습니다.<br>잠금화면/제어센터에서 이전·재생·다음으로 조작할 수 있습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
+    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다른 앱으로 전환하거나 화면을 잠가도 음악 재생을 계속할 수 있습니다.<br>잠금화면/제어센터에서 이전·재생·다음으로 조작할 수 있습니다.<br>MP4는 [작은 화면] 버튼을 지원하는 환경에서 다른 앱 위의 작은 화면으로 전환할 수 있습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
@@ -227,6 +231,42 @@ input[type=file]{display:none}
 
 // iPhone background / Lock Screen media controls.
 // The browser exposes these through the Media Session API when supported.
+
+function pipSupported(){
+  return !!(video &&
+    ((typeof video.webkitSupportsPresentationMode==='function' &&
+      video.webkitSupportsPresentationMode('picture-in-picture') &&
+      typeof video.webkitSetPresentationMode==='function') ||
+     (typeof video.requestPictureInPicture==='function' &&
+      document.pictureInPictureEnabled)));
+}
+function updatePiPButton(){
+  const b=$('btnPiP');
+  if(!b)return;
+  const available=pipSupported() && activeMedia===video;
+  b.classList.toggle('is-available',available);
+  b.disabled=!available;
+}
+async function togglePiP(){
+  if(activeMedia!==video)return;
+  try{
+    if(typeof video.webkitSupportsPresentationMode==='function' &&
+       video.webkitSupportsPresentationMode('picture-in-picture') &&
+       typeof video.webkitSetPresentationMode==='function'){
+      const mode=video.webkitPresentationMode;
+      video.webkitSetPresentationMode(mode==='picture-in-picture'?'inline':'picture-in-picture');
+      return;
+    }
+    if(document.pictureInPictureElement){
+      await document.exitPictureInPicture();
+    }else if(typeof video.requestPictureInPicture==='function'){
+      await video.requestPictureInPicture();
+    }
+  }catch(e){
+    $('status').textContent='현재 아이폰 홈 화면 앱에서는 작은 화면 기능을 사용할 수 없습니다. Safari에서 열면 지원될 수 있습니다.';
+  }
+}
+
 function mediaSessionSupported(){
   return 'mediaSession' in navigator;
 }
@@ -260,6 +300,13 @@ function setupMediaSessionHandlers(){
     loadCurrent(true);
   });
 }
+
+function refreshMediaSessionForPlayback(){
+  setupMediaSessionHandlers();
+  updateMediaSessionMetadata();
+  setMediaSessionState('playing');
+}
+
 function updateMediaSessionMetadata(){
   if(!mediaSessionSupported()) return;
   const t=playlist[index];
@@ -340,7 +387,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.40';
+const APP_VERSION='V3.41';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -382,10 +429,12 @@ function setMediaSource(f){
     video.src=objectUrl;
     video.hidden=false;
     video.load();
+    updatePiPButton();
   }else{
     activeMedia=audio;
     audio.src=objectUrl;
     audio.load();
+    updatePiPButton();
   }
 }
 
@@ -814,8 +863,8 @@ function renderPlaylist(){
 }
 
 
-// V3.40: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.40_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.41: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.41_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1093,6 +1142,9 @@ video.addEventListener('loadedmetadata',()=>{
 video.addEventListener('canplay',()=>{
   if(activeMedia===video) $('status').textContent='동영상 재생 준비 완료';
 });
+video.addEventListener('webkitpresentationmodechanged',updatePiPButton);
+document.addEventListener('enterpictureinpicture',updatePiPButton);
+document.addEventListener('leavepictureinpicture',updatePiPButton);
 video.addEventListener('error',()=>{
   if(activeMedia!==video)return;
   const code=video.error?.code;
@@ -1108,9 +1160,9 @@ function advanceAfterEnd(){
   else if(repeatAll){index=0;loadCurrent(true)}
   else updateUI();
 }
-audio.addEventListener('play',()=>{setMediaSessionState('playing');updateMediaSessionMetadata();});
+audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
 audio.addEventListener('pause',()=>{setMediaSessionState('paused');});
-video.addEventListener('play',()=>{setMediaSessionState('playing');updateMediaSessionMetadata();});
+video.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
 video.addEventListener('pause',()=>{setMediaSessionState('paused');});
 audio.addEventListener('ended',advanceAfterEnd);
 video.addEventListener('ended',advanceAfterEnd);
@@ -1140,6 +1192,7 @@ function updateUI(){
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
+if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 setupMediaSessionHandlers();
 loadIndex();
 
@@ -1155,7 +1208,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=340',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=341',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
