@@ -175,14 +175,14 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.29</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.30</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
-    <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 한 번 선택 → 전체 자동 연결</button>
+    <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 확인 → 자동 연결·정리</button>
     <button id="btnRelinkFiles" class="playlist-add secondary-action">🎵 파일 여러 개 선택해서 연결</button>
-    <div class="relink-help">음악 폴더를 확인하면 없는 곡은 재생목록에서 자동으로 정리합니다.</div>
+    <div class="relink-help">음악 폴더를 확인하면 존재하는 곡은 자동 연결하고 없는 곡은 재생목록에서 자동 정리합니다.</div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
@@ -233,7 +233,16 @@ function saveRecentFolderMeta(files){
   if(paths.length){const parts=paths[0].split('/'); if(parts.length>1) folder=parts[0];}
   try{localStorage.setItem(RECENT_FOLDER_KEY,JSON.stringify({name:folder||'최근 음악 폴더',fileCount:arr.length,savedAt:new Date().toISOString()}))}catch(e){}
 }
-const APP_VERSION='V3.29 FINAL';
+
+const VERIFIED_SCAN_KEY='malgussi_last_verified_scan_v1';
+function saveVerifiedScan(files){
+  const arr=Array.from(files||[]);
+  const paths=arr.map(f=>f.webkitRelativePath||'').filter(Boolean);
+  let folder='';
+  if(paths.length){const parts=paths[0].split('/');if(parts.length>1)folder=parts[0];}
+  try{localStorage.setItem(VERIFIED_SCAN_KEY,JSON.stringify({folder:folder||'최근 음악 폴더',count:arr.length,at:new Date().toISOString()}))}catch(e){}
+}
+const APP_VERSION='V3.30 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -568,9 +577,7 @@ $('btnPlay').onclick=async()=>{
   if(!playlist.length){$('files').click();return}
   const f=fileMap.get(playlist[index]?.id);
   if(!f){
-    $('status').textContent='음악 폴더에서 현재 재생목록을 자동으로 확인합니다.';
-    if('webkitdirectory' in $('folderFiles')) $('folderFiles').click();
-    else $('files').click();
+    $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
     return;
   }
   if(audio.paused){try{await audio.play()}catch(e){}}
@@ -616,9 +623,7 @@ function renderPlaylist(){
     main.onclick=async()=>{
       index=i;
       if(!fileMap.has(t.id)){
-        $('status').textContent='이 음악을 찾는 중입니다. 음악 폴더를 선택하면 자동으로 확인합니다.';
-        if('webkitdirectory' in $('folderFiles')) $('folderFiles').click();
-        else $('files').click();
+        $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
         return;
       }
       await loadCurrent(true);
@@ -654,7 +659,8 @@ function renderPlaylist(){
 }
 
 
-// V3.29: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.30: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.30_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isAudioFile);
@@ -677,6 +683,7 @@ function relinkFromFolder(files){
   const before=playlist.length;
   playlist=playlist.filter(t=>fileMap.has(t.id));
   const removed=before-playlist.length;
+  saveVerifiedScan(arr);
   if(index>=playlist.length)index=Math.max(0,playlist.length-1);
   saveList(); renderPlaylist(); renderStorageInfo(); updateUI();
   if(!playlist.length){
