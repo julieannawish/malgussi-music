@@ -150,6 +150,8 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .status{text-align:center;min-height:20px;color:#665D58;font-size:13px;margin:7px 0}
 input[type=file]{display:none}
  .video-player{width:100%;aspect-ratio:1/1;display:block;object-fit:contain;background:#111;border-radius:18px;position:relative;z-index:2}.video-player[hidden]{display:none!important}
+.art[hidden]{display:none!important}
+.video-player[hidden]{display:none!important}
 </style>
 
 <script data-build-guard>
@@ -159,7 +161,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','338');
+    u.searchParams.set('v','339');
     location.replace(u.toString());
   }
 })();
@@ -176,7 +178,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.38</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.39</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -285,7 +287,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.38';
+const APP_VERSION='V3.39';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -606,8 +608,6 @@ async function loadCurrent(autoplay){
     return;
   }
 
-  if(objectUrl)URL.revokeObjectURL(objectUrl);
-  objectUrl=URL.createObjectURL(f);
   setMediaSource(f);
   $('now').textContent=t.name;
   $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
@@ -755,8 +755,8 @@ function renderPlaylist(){
 }
 
 
-// V3.38: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.38_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.39: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.39_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1091,7 +1091,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=338',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=339',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
