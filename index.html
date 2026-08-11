@@ -175,13 +175,12 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.32</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.33</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
     <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 지정</button>
-    <button id="btnRelinkFiles" </button>
     <div class="relink-help">음악 폴더를 지정하면 재생목록의 곡을 자동으로 연결하고, 없는 곡은 자동으로 정리합니다.<span id="folder-only-hint" class="folder-only-hint">파일은 앱에 복사하지 않습니다.</span></div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
@@ -284,7 +283,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.32 FINAL';
+const APP_VERSION='V3.33 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -710,8 +709,8 @@ function renderPlaylist(){
 }
 
 
-// V3.32: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.32_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.33: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.33_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isAudioFile);
@@ -746,23 +745,29 @@ function relinkFromFolder(files){
 }
 
 async function relinkFolder(){
-  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
-  if(!missing){
+  const missing=playlist.filter(t=>!fileMap.has(t.id));
+  if(!missing.length){
     $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
     return;
   }
 
-  // If a real persistent directory handle exists and permission is still granted,
-  // scan it automatically. This is the desired zero-click startup path.
+  // iPhone Safari: open the native folder picker synchronously from the tap.
+  // Do not await before picker.click(), otherwise iOS may reject the picker
+  // because the transient user activation has expired.
+  const picker=$('folderFiles');
+  if(!('showDirectoryPicker' in window)){
+    $('status').textContent='음악 폴더를 선택해 주세요.';
+    picker.click();
+    return;
+  }
+
+  // Standard Directory Picker path for browsers that support it.
   if(await canUseSavedMusicDirectory()){
     try{
       const handle=await loadMusicDirectoryHandle();
       const files=[];
       for await(const entry of handle.values()){
-        if(entry.kind==='file'){
-          const f=await entry.getFile();
-          files.push(f);
-        }
+        if(entry.kind==='file') files.push(await entry.getFile());
       }
       if(files.length){
         await relinkFromFolder(files);
@@ -772,25 +777,20 @@ async function relinkFolder(){
     }catch(e){}
   }
 
-  // iOS Safari 26.x currently reaches this fallback because the standard
-  // showDirectoryPicker() API is not exposed. The user chooses the folder once.
-  $('status').textContent='음악 폴더를 지정하면 전체 곡을 자동으로 연결하고 없는 곡을 정리합니다.';
-  const picker=$('folderFiles');
-  if('webkitdirectory' in picker) picker.click();
-  else $('files').click();
+  try{
+    const handle=await window.showDirectoryPicker({mode:'read'});
+    await saveMusicDirectoryHandle(handle);
+    const files=[];
+    for await(const entry of handle.values()){
+      if(entry.kind==='file') files.push(await entry.getFile());
+    }
+    await relinkFromFolder(files);
+  }catch(e){
+    $('status').textContent='음악 폴더 선택이 취소되었습니다.';
+  }
 }
 
-function relinkFiles(){
-  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
-  if(!missing){
-    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
-    return;
-  }
-  $('status').textContent=`재생목록의 ${missing}곡을 음악 폴더와 자동으로 확인합니다.`;
-  $('files').click();
-}
 $('btnRelink').onclick=relinkFolder;
-$('btnRelinkFiles').onclick=relinkFiles;
 
 function clearAllIndex(){
   if(!playlist.length){
