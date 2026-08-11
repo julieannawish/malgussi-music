@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V327">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -126,7 +127,6 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .storage-info{font-size:15px;line-height:1.6;color:#665D58}
 .secondary-action{margin-top:8px!important;background:#F7F3EE!important;color:#6B5548!important;border:1px solid #E5D6C8!important}
 .relink-help{font-size:13px;line-height:1.5;color:#776B63;margin:8px 4px 2px}
-.recent-folder-hint{font-size:12px;color:#8A7C73;margin:2px 4px 6px;min-height:16px}
 
 
 .track-row.disconnected{background:#FFF9F2;border-color:#F0CFA8}
@@ -150,6 +150,19 @@ input[type=range]{width:100%;accent-color:#2457A6}
 .status{text-align:center;min-height:20px;color:#665D58;font-size:13px;margin:7px 0}
 input[type=file]{display:none}
 </style>
+
+<script data-build-guard>
+(function(){
+  var expected='MALGUSSI_BUILD_V327';
+  var meta=document.querySelector('meta[name="malgussi-build"]');
+  if(meta && meta.content===expected) return;
+  var u=new URL(location.href);
+  if(u.searchParams.get('v')!=='327'){
+    u.searchParams.set('v','327');
+    location.replace(u.toString());
+  }
+})();
+</script>
 </head>
 <body>
 <div class="app">
@@ -169,7 +182,7 @@ input[type=file]{display:none}
     </div>
     <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 한 번 선택 → 전체 자동 연결</button>
     <button id="btnRelinkFiles" class="playlist-add secondary-action">🎵 파일 여러 개 선택해서 연결</button>
-    <div class="relink-help">음악이 들어 있는 폴더를 한 번만 선택하면 목록의 곡을 자동으로 찾아 연결합니다.</div><div id="recentFolderHint" class="recent-folder-hint"></div>
+    <div class="relink-help">음악이 들어 있는 폴더를 한 번만 선택하면 목록의 곡을 자동으로 찾아 연결합니다.</div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
@@ -217,19 +230,11 @@ function saveRecentFolderMeta(files){
   if(!arr.length)return;
   const paths=arr.map(f=>f.webkitRelativePath||'').filter(Boolean);
   let folder='';
-  if(paths.length){
-    const parts=paths[0].split('/');
-    if(parts.length>1) folder=parts[0];
-  }
-  const meta={name:folder||'최근 음악 폴더',fileCount:arr.length,savedAt:new Date().toISOString()};
-  try{localStorage.setItem(RECENT_FOLDER_KEY,JSON.stringify(meta))}catch(e){}
+  if(paths.length){const parts=paths[0].split('/'); if(parts.length>1) folder=parts[0];}
+  try{localStorage.setItem(RECENT_FOLDER_KEY,JSON.stringify({name:folder||'최근 음악 폴더',fileCount:arr.length,savedAt:new Date().toISOString()}))}catch(e){}
 }
-function recentFolderLabel(){
-  const m=getRecentFolderMeta();
-  return m&&m.name ? m.name : '';
-}
-const APP_VERSION='V3.27 FOLDER RELINK';
-const KEY='playlist_index_v321';
+const APP_VERSION='V3.27 FINAL';
+const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
 
@@ -726,12 +731,10 @@ function relinkFolder(){
     $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
     return;
   }
-  const recent=recentFolderLabel();
+
   const picker=$('folderFiles');
   if('webkitdirectory' in picker){
-    $('status').textContent=recent
-      ? `최근 음악 폴더에서 ${missing}곡을 자동으로 확인합니다.`
-      : `음악 폴더에서 ${missing}곡을 자동으로 확인합니다.`;
+    $('status').textContent=`음악 폴더를 선택하면 ${missing}곡을 자동으로 찾아 연결합니다.`;
     picker.click();
   }else{
     $('status').textContent='이 브라우저에서는 폴더 선택을 지원하지 않아 파일 여러 개 선택으로 진행합니다.';
@@ -983,15 +986,6 @@ document.addEventListener('click', function(e){
   }else{
     document.querySelectorAll('.track-row').forEach((el,n)=>el.classList.toggle('selected',n===i));
   }
-});
-</script>
-
-<script data-recent-folder-hint-update>
-document.addEventListener('DOMContentLoaded',function(){
-  const el=document.getElementById('recentFolderHint');
-  if(!el)return;
-  const m=getRecentFolderMeta();
-  if(m&&m.name) el.textContent='최근 연결 폴더: '+m.name;
 });
 </script>
 </body>
