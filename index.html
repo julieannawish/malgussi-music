@@ -112,6 +112,11 @@ input[type=range]{width:100%;accent-color:#2457A6}
 }
 .storage-title{font-size:17px;font-weight:900;margin-bottom:6px}
 .storage-info{font-size:15px;line-height:1.6;color:#665D58}
+
+.track-row.disconnected{background:#FFF9F2;border-color:#F0CFA8}
+.track-state{font-size:12px;color:#C06A18;margin-left:auto;white-space:nowrap}
+.relink-note{font-size:13px;color:#8A5A2B}
+
 .storage-delete{
   margin-top:10px;width:100%;height:48px;border-radius:14px;
   border:1px solid #E5B9A7;background:#FFF0EB;color:#B4472E;
@@ -141,9 +146,13 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">💾 앱 저장공간</div>
-    <div id="storageInfo" class="storage-info">저장공간을 확인하는 중입니다…</div>
-    <button id="btnClearStored" class="storage-delete">앱에 저장된 음악 모두 삭제</button>
+    <div class="storage-title">📇 인덱스 방식</div>
+    <div id="storageInfo" class="storage-info">
+      음악 파일 자체는 앱에 복사하지 않습니다.<br>
+      재생목록에는 파일명·크기 등의 인덱스 정보만 저장합니다.
+    </div>
+    <button id="btnRelink" class="playlist-add" style="margin-top:10px">🔗 원본 음악 다시 연결</button>
+    <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
   <h1>🎵 말구씨 음악 앱</h1>
@@ -171,127 +180,56 @@ input[type=file]{display:none}
 
     <input id="files" type="file" multiple>
     <div id="status" class="status"></div>
-    <div class="help">한 번 음악을 넣어두면<br>다음 곡으로 자동으로 이어집니다.</div>
+    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다시 열면 원본 음악을 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
 <audio id="audio" preload="metadata" playsinline></audio>
 
 <script>
-const DB_NAME='malgussi_music_v32';
-const STORE='tracks';
-const KEY='playlist_v32';
+
+const APP_VERSION='V3.13 INDEX';
+const KEY='playlist_index_v313';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
-let playlist=[], index=0, repeatAll=localStorage.getItem('repeatAll')!=='0', objectUrl=null, dragging=false;
 
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const r=indexedDB.open(DB_NAME,1);
-    r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id'});
-    r.onsuccess=()=>resolve(r.result);
-    r.onerror=()=>reject(r.error);
-  });
-}
-async function putTrack(t){
-  const db=await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx=db.transaction(STORE,'readwrite');
-    tx.objectStore(STORE).put(t);
-    tx.oncomplete=()=>resolve();
-    tx.onerror=()=>reject(tx.error);
-  });
-}
-async function getTrack(id){
-  const db=await openDB();
-  return new Promise((resolve,reject)=>{
-    const r=db.transaction(STORE).objectStore(STORE).get(id);
-    r.onsuccess=()=>resolve(r.result);
-    r.onerror=()=>reject(r.error);
-  });
-}
+let playlist=[];      // index records only: {id,name,size,lastModified,type}
+let fileMap=new Map(); // File objects live only for the current session
+let artworkMap=new Map();
+let index=0;
+let repeatAll=localStorage.getItem('repeatAll')!=='0';
+let objectUrl=null;
+let dragging=false;
 
-async function deleteTrack(id){
-  const db=await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx=db.transaction(STORE,'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete=()=>resolve();
-    tx.onerror=()=>reject(tx.error);
-  });
-}
-async function getStorageInfo(){
-  const db=await openDB();
-  return new Promise((resolve,reject)=>{
-    const r=db.transaction(STORE).objectStore(STORE).getAll();
-    r.onsuccess=()=>{
-      const tracks=r.result||[];
-      const bytes=tracks.reduce((sum,t)=>sum+(t.blob?.size||0),0);
-      resolve({count:tracks.length,bytes});
-    };
-    r.onerror=()=>reject(r.error);
-  });
-}
 function formatBytes(bytes){
   if(bytes<1024*1024) return `${(bytes/1024).toFixed(1)} KB`;
   if(bytes<1024*1024*1024) return `${(bytes/1024/1024).toFixed(1)} MB`;
   return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
 }
-async function renderStorageInfo(){
-  try{
-    const info=await getStorageInfo();
-    $('storageInfo').textContent=
-      `현재 앱에 저장된 음악 ${info.count}곡 · 사용 공간 약 ${formatBytes(info.bytes)}`;
-  }catch(e){
-    $('storageInfo').textContent='저장공간 정보를 확인할 수 없습니다.';
-  }
-}
-async function clearAllStoredMusic(){
-  const info=await getStorageInfo();
-  if(!info.count){
-    $('status').textContent='앱에 저장된 음악이 없습니다.';
-    await renderStorageInfo();
-    return;
-  }
-  const ok=confirm(
-    `앱에 저장된 ${info.count}곡(약 ${formatBytes(info.bytes)})을 모두 삭제할까요?\n\n`+
-    `아이폰의 원본 음악 파일은 삭제하지 않습니다.`
-  );
-  if(!ok)return;
 
-  const db=await openDB();
-  await new Promise((resolve,reject)=>{
-    const tx=db.transaction(STORE,'readwrite');
-    tx.objectStore(STORE).clear();
-    tx.oncomplete=()=>resolve();
-    tx.onerror=()=>reject(tx.error);
-  });
-
-  playlist=[];
-  index=0;
-  localStorage.removeItem(KEY);
-  audio.pause();
-  if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
-  audio.removeAttribute('src');
-  $('now').textContent='음악을 넣어 주세요';
-  $('count').textContent='아직 음악이 없습니다';
-  $('mainImage').src='';
-  $('mainImage').alt='앨범 이미지 없음';
-  updateUI();
-  renderPlaylist();
-  await renderStorageInfo();
-  $('status').textContent='앱에 저장된 음악을 모두 삭제했습니다.';
+function saveList(){
+  localStorage.setItem(KEY,JSON.stringify(playlist));
 }
 
-async function loadTracks(){
+function loadIndex(){
   try{
     const raw=localStorage.getItem(KEY);
     playlist=raw?JSON.parse(raw):[];
+    if(!Array.isArray(playlist))playlist=[];
   }catch(e){playlist=[]}
-  if(!playlist.length){updateUI();return;}
-  await loadCurrent(false);
+  updateUI();
+  renderPlaylist();
+  renderStorageInfo();
 }
-function saveList(){localStorage.setItem(KEY,JSON.stringify(playlist));}
+
+function renderStorageInfo(){
+  const indexBytes=new Blob([JSON.stringify(playlist)]).size;
+  const connected=playlist.filter(t=>fileMap.has(t.id)).length;
+  $('storageInfo').innerHTML =
+    `인덱스 ${playlist.length}곡 · 앱에 저장된 음악 파일 <b>0 MB</b><br>`+
+    `현재 연결됨 ${connected}곡 · 인덱스 정보 약 ${formatBytes(indexBytes)}<br>`+
+    `<span class="relink-note">※ MP3/M4A 등의 원본 파일은 앱 저장소로 복사하지 않습니다.</span>`;
+}
 
 function isAudioFile(f){
   const n=(f.name||'').toLowerCase();
@@ -317,21 +255,20 @@ function parseID3Artwork(buf){
     const dataStart=pos+10, dataEnd=Math.min(end,dataStart+frameSize);
     if(id==='APIC' || id==='PIC'){
       const d=b.slice(dataStart,dataEnd);
-      let p=0; const enc=d[p++];
-      let mime='';
+      let p=0; const enc=d[p++]; let mime='';
       while(p<d.length && d[p]!==0){mime+=String.fromCharCode(d[p++])} p++;
       if(mime==='image/jpg') mime='image/jpeg';
       if(id==='APIC'){
-        if(p>=d.length) return null;
-        p++; // picture type
-        while(p<d.length && d[p]!==0) p++; p++;
+        if(p>=d.length)return null;
+        p++;
+        while(p<d.length && d[p]!==0)p++; p++;
       }else{
         if(p+1<d.length)p+=1;
-        p+=1; // skip picture type
+        p+=1;
         while(p<d.length && d[p]!==0)p++; p++;
       }
       const image=d.slice(p);
-      if(image.length) return {mime:mime||'image/jpeg',bytes:image.buffer};
+      if(image.length)return {mime:mime||'image/jpeg',bytes:image};
     }
     pos=dataEnd;
   }
@@ -339,65 +276,123 @@ function parseID3Artwork(buf){
 }
 async function extractArtwork(file){
   const n=(file.name||'').toLowerCase();
-  if(!n.endsWith('.mp3')) return null;
-  const buf=await file.arrayBuffer();
-  return parseID3Artwork(buf);
+  if(!n.endsWith('.mp3'))return null;
+  try{
+    // Read only in memory; never persist the audio blob.
+    const buf=await file.arrayBuffer();
+    return parseID3Artwork(buf);
+  }catch(e){return null}
 }
-function formatTime(ms){
-  if(!Number.isFinite(ms)||ms<=0)return '00:00';
-  const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
-  return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+function artworkToUrl(art){
+  if(!art)return null;
+  const blob=new Blob([art.bytes],{type:art.mime});
+  return URL.createObjectURL(blob);
+}
+function findExistingByFile(f){
+  return playlist.find(t=>
+    t.name===f.name &&
+    Number(t.size)===Number(f.size) &&
+    Number(t.lastModified)===Number(f.lastModified)
+  );
 }
 async function addFiles(files){
-  const arr=Array.from(files||[]);
-  if(!arr.length)return;
-  $('status').textContent='곡을 추가하는 중입니다…';
-  let added=0;
-  for(const f of arr){
-    if(!isAudioFile(f))continue;
-    const id=crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random();
-    let artwork=null;
-    try{artwork=await extractArtwork(f)}catch(e){}
-    await putTrack({id,name:f.name,type:f.type||'audio/mpeg',blob:f,artwork});
-    playlist.push(id); added++;
+  const arr=Array.from(files||[]).filter(isAudioFile);
+  if(!arr.length){
+    $('status').textContent='음악 파일을 선택해 주세요.';
+    return;
   }
+  $('status').textContent='음악 인덱스를 만드는 중입니다…';
+  let added=0,relinked=0;
+
+  for(const f of arr){
+    let rec=findExistingByFile(f);
+    if(rec){
+      fileMap.set(rec.id,f);
+      const art=await extractArtwork(f);
+      if(art)artworkMap.set(rec.id,art);
+      relinked++;
+      continue;
+    }
+    const id=crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random();
+    rec={id,name:f.name,size:f.size,lastModified:f.lastModified||0,type:f.type||'audio/mpeg'};
+    playlist.push(rec);
+    fileMap.set(id,f);
+    const art=await extractArtwork(f);
+    if(art)artworkMap.set(id,art);
+    added++;
+  }
+
   saveList();
-  $('status').textContent=added?`${added}곡이 추가되었습니다.`:'음악 파일을 선택해 주세요.';
-  if(added){index=playlist.length-1;await loadCurrent(true); if($('playlistScreen').classList.contains('open'))renderPlaylist();}
+  index=Math.max(0,playlist.length-1);
+  renderStorageInfo();
+  renderPlaylist();
+
+  if(added||relinked){
+    $('status').textContent=
+      `${added}곡 추가 · ${relinked}곡 원본 연결 완료`;
+    if(fileMap.has(playlist[index]?.id))await loadCurrent(true);
+  }else{
+    $('status').textContent='연결할 음악 파일이 없습니다.';
+  }
 }
+
 $('files').addEventListener('change',async e=>{
-  const files=e.target.files;
-  await addFiles(files);
+  await addFiles(e.target.files);
   e.target.value='';
 });
 
 async function loadCurrent(autoplay){
   if(!playlist.length){updateUI();return}
   index=Math.max(0,Math.min(index,playlist.length-1));
-  const t=await getTrack(playlist[index]);
-  if(!t){playlist.splice(index,1);saveList();return loadCurrent(autoplay)}
+  const t=playlist[index];
+  const f=fileMap.get(t.id);
+
+  if(!f){
+    if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
+    audio.pause();
+    audio.removeAttribute('src');
+    $('now').textContent=t.name;
+    $('count').textContent=`${index+1}곡 중 ${playlist.length}곡 · 원본 연결 필요`;
+    $('mainImage').src='';
+    $('mainImage').alt='원본 음악을 다시 연결해 주세요';
+    $('status').textContent='이 곡의 원본 파일이 연결되지 않았습니다. 재생목록 관리에서 「원본 음악 다시 연결」을 눌러 주세요.';
+    updateUI();
+    return;
+  }
+
   if(objectUrl)URL.revokeObjectURL(objectUrl);
-  objectUrl=URL.createObjectURL(t.blob);
+  objectUrl=URL.createObjectURL(f);
   audio.src=objectUrl;
   $('now').textContent=t.name;
   $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
-  if(t.artwork){
-    const blob=new Blob([t.artwork.bytes],{type:t.artwork.mime});
-    $('mainImage').src=URL.createObjectURL(blob);
+
+  if(artworkMap.has(t.id)){
+    if($('mainImage').dataset.url)URL.revokeObjectURL($('mainImage').dataset.url);
+    const u=artworkToUrl(artworkMap.get(t.id));
+    $('mainImage').src=u;
+    $('mainImage').dataset.url=u;
     $('mainImage').alt='앨범 이미지';
   }else{
     $('mainImage').src='';
     $('mainImage').alt='앨범 이미지 없음';
   }
+
   audio.load();
   if(autoplay){
     try{await audio.play()}catch(e){}
   }
+  $('status').textContent='';
   updateUI();
 }
 
 $('btnPlay').onclick=async()=>{
   if(!playlist.length){$('files').click();return}
+  const f=fileMap.get(playlist[index]?.id);
+  if(!f){
+    $('files').click();
+    $('status').textContent='원본 음악 파일을 다시 선택해 주세요.';
+    return;
+  }
   if(audio.paused){try{await audio.play()}catch(e){}}
   else audio.pause();
   updateUI();
@@ -414,7 +409,6 @@ function updateRepeatButton(){
   b.classList.toggle('repeat-off',!on);
   b.textContent=on?'↻  계속 듣기: 켜짐':'↻  계속 듣기: 꺼짐';
 }
-
 $('btnRepeat').onclick=()=>{
   repeatAll=!repeatAll;
   localStorage.setItem('repeatAll',repeatAll?'1':'0');
@@ -428,191 +422,178 @@ function renderPlaylist(){
     return;
   }
   box.innerHTML='';
-  playlist.forEach((id,i)=>{
-    getTrack(id).then(t=>{
-      if(!t)return;
-      const row=document.createElement('div');
-      row.className='track-row'+(i===index?' current':'');
-      row.dataset.index=i;
+  playlist.forEach((t,i)=>{
+    const row=document.createElement('div');
+    row.className='track-row'+(i===index?' current':'')+(!fileMap.has(t.id)?' disconnected':'');
+    row.dataset.index=i;
 
-      const main=document.createElement('button');
-      main.className='track-main';
-      main.innerHTML=`<span class="num">${i+1}</span><span class="name"></span>`;
-      main.querySelector('.name').textContent=t.name;
-      main.onclick=async()=>{ index=i; await loadCurrent(true); closePlaylist(); };
+    const main=document.createElement('button');
+    main.className='track-main';
+    main.innerHTML=`<span class="num">${i+1}</span><span class="name"></span>`;
+    main.querySelector('.name').textContent=t.name;
+    main.onclick=async()=>{
+      index=i;
+      if(!fileMap.has(t.id)){
+        $('status').textContent='이 곡은 원본 파일 연결이 필요합니다.';
+        $('files').click();
+        return;
+      }
+      await loadCurrent(true);
+      closePlaylist();
+    };
 
-      const del=document.createElement('button');
-      del.className='track-delete';
-      del.textContent='삭제';
-      del.title='삭제';
-      del.onclick=async()=>{
-        if(!confirm(`"${t.name}"을 재생목록에서 삭제할까요?`))return;
-        await deleteTrack(id);
-        playlist.splice(i,1);
-        if(index>i)index--;
-        if(index>=playlist.length)index=Math.max(0,playlist.length-1);
-        saveList();
-        if(playlist.length) await loadCurrent(false);
-        else { audio.pause(); audio.removeAttribute('src'); updateUI(); }
-        renderPlaylist();
-      };
+    const state=document.createElement('span');
+    state.className='track-state';
+    state.textContent=fileMap.has(t.id)?'연결됨':'원본 연결 필요';
 
-      row.append(main,del);
-      box.appendChild(row);
+    const del=document.createElement('button');
+    del.className='track-delete';
+    del.textContent='삭제';
+    del.title='삭제';
+    del.onclick=()=>{
+      if(!confirm(`"${t.name}"을 재생목록에서 삭제할까요?`))return;
+      playlist.splice(i,1);
+      fileMap.delete(t.id);
+      artworkMap.delete(t.id);
+      if(index>i)index--;
+      if(index>=playlist.length)index=Math.max(0,playlist.length-1);
+      saveList();
+      if(playlist.length)loadCurrent(false);
+      else {audio.pause();audio.removeAttribute('src');updateUI();}
+      renderPlaylist();
+      renderStorageInfo();
+    };
 
-      setupDrag(row);
-    });
+    row.append(main,state,del);
+    box.appendChild(row);
+    setupDrag(row);
   });
 }
 
-let dragIndex=null;
-let dragRow=null;
-let dragMode=null;
-let dragStartY=0;
-let dragMoved=false;
-
-function clearDropTargets(){
-  document.querySelectorAll('.track-row.drop-target')
-    .forEach(el=>el.classList.remove('drop-target'));
+function relinkFiles(){
+  $('status').textContent='원본 음악 파일을 선택해 주세요. 같은 파일명·크기·수정일이면 자동으로 연결됩니다.';
+  $('files').click();
 }
+$('btnRelink').onclick=relinkFiles;
 
+function clearAllIndex(){
+  if(!playlist.length){
+    $('status').textContent='삭제할 인덱스가 없습니다.';
+    return;
+  }
+  if(!confirm(`재생목록 인덱스 ${playlist.length}곡을 모두 삭제할까요?\n\n원본 음악 파일은 삭제하지 않습니다.`))return;
+  playlist=[];
+  fileMap.clear();
+  artworkMap.clear();
+  saveList();
+  index=0;
+  audio.pause();
+  if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
+  audio.removeAttribute('src');
+  $('now').textContent='음악을 넣어 주세요';
+  $('count').textContent='아직 음악이 없습니다';
+  $('mainImage').src='';
+  $('mainImage').removeAttribute('data-url');
+  renderPlaylist();
+  renderStorageInfo();
+  updateUI();
+  $('status').textContent='재생목록 인덱스를 모두 삭제했습니다. 원본 음악 파일은 그대로입니다.';
+}
+$('btnClearStored').onclick=clearAllIndex;
+
+let dragIndex=null,dragRow=null,dragMode=null,dragStartY=0,dragMoved=false;
+function clearDropTargets(){
+  document.querySelectorAll('.track-row.drop-target').forEach(el=>el.classList.remove('drop-target'));
+}
 function showDropTarget(clientY){
   const rows=[...document.querySelectorAll('.track-row')].filter(el=>el!==dragRow);
   let target=null;
   for(const r of rows){
     const rect=r.getBoundingClientRect();
-    if(clientY < rect.top + rect.height/2){
-      target=r;
-      break;
-    }
+    if(clientY<rect.top+rect.height/2){target=r;break}
   }
   clearDropTargets();
   if(target)target.classList.add('drop-target');
 }
-
 function finishDrag(clientY){
-  if(dragIndex===null || !dragRow)return;
-
+  if(dragIndex===null||!dragRow)return;
   const rows=[...document.querySelectorAll('.track-row')].filter(el=>el!==dragRow);
   let insertBefore=null;
-
   for(const r of rows){
     const rect=r.getBoundingClientRect();
-    if(clientY < rect.top + rect.height/2){
-      insertBefore=Number(r.dataset.index);
-      break;
-    }
+    if(clientY<rect.top+rect.height/2){insertBefore=Number(r.dataset.index);break}
   }
-
   let to=(insertBefore===null)?playlist.length-1:insertBefore;
   const from=dragIndex;
-
   if(from!==to){
     const item=playlist.splice(from,1)[0];
     if(to>from)to--;
     playlist.splice(to,0,item);
-
     if(index===from)index=to;
-    else if(from<index && index<=to)index--;
-    else if(to<=index && index<from)index++;
-
+    else if(from<index&&index<=to)index--;
+    else if(to<=index&&index<from)index++;
     saveList();
   }
-
   clearDropTargets();
   dragRow.classList.remove('dragging');
-  dragRow=null;
-  dragIndex=null;
-  dragMode=null;
-  dragMoved=false;
+  dragRow=null;dragIndex=null;dragMode=null;dragMoved=false;
   renderPlaylist();
 }
-
-function cancelDrag(){
-  clearDropTargets();
-  if(dragRow)dragRow.classList.remove('dragging');
-  dragRow=null;
-  dragIndex=null;
-  dragMode=null;
-  dragMoved=false;
-}
-
 function setupDrag(row){
-  let mode=null, moved=false, startY=0, pointerId=null;
-
-  const begin=(y, m, id=null)=>{
-    dragIndex=Number(row.dataset.index);
-    dragRow=row;
-    dragStartY=y;
-    startY=y;
-    dragMoved=false;
-    moved=false;
-    mode=m;
-    pointerId=id;
-    row.classList.add('dragging');
+  let mode=null,moved=false,startY=0,pointerId=null;
+  const begin=(y,m,id=null)=>{
+    dragIndex=Number(row.dataset.index);dragRow=row;dragStartY=y;startY=y;
+    dragMoved=false;moved=false;mode=m;pointerId=id;row.classList.add('dragging');
   };
-
-  const move=(y)=>{
-    if(!dragRow || dragRow!==row)return;
-    if(Math.abs(y-startY)>4){moved=true;dragMoved=true;}
+  const move=y=>{
+    if(!dragRow||dragRow!==row)return;
+    if(Math.abs(y-startY)>4){moved=true;dragMoved=true}
     if(moved)showDropTarget(y);
   };
-
-  const finish=(y)=>{
-    if(!dragRow || dragRow!==row)return;
-    if(moved)finishDrag(y);
-    else cancelDrag();
-    mode=null; pointerId=null;
+  const finish=y=>{
+    if(!dragRow||dragRow!==row)return;
+    if(moved)finishDrag(y);else cancelDrag();
+    mode=null;pointerId=null;
   };
-
   const touchMove=e=>{
-    if(mode!=='touch' || !dragRow || !e.touches.length)return;
-    const t=Array.from(e.touches).find(x=>x.identifier===pointerId);
-    if(!t)return;
-    e.preventDefault();
-    move(t.clientY);
+    if(mode!=='touch'||!dragRow||!e.touches.length)return;
+    const t=Array.from(e.touches).find(x=>x.identifier===pointerId);if(!t)return;
+    e.preventDefault();move(t.clientY);
   };
   const touchEnd=e=>{
-    if(mode!=='touch' || !dragRow)return;
+    if(mode!=='touch'||!dragRow)return;
     const t=Array.from(e.changedTouches).find(x=>x.identifier===pointerId);
-    const y=t?t.clientY:startY;
-    e.preventDefault();
-    finish(y);
+    const y=t?t.clientY:startY;e.preventDefault();finish(y);
     document.removeEventListener('touchmove',touchMove,{passive:false});
     document.removeEventListener('touchend',touchEnd,{passive:false});
     document.removeEventListener('touchcancel',touchEnd,{passive:false});
   };
-
   row.addEventListener('touchstart',e=>{
     if(e.touches.length!==1)return;
     if(e.target.closest('.track-delete'))return;
-    const t=e.touches[0];
-    begin(t.clientY,'touch',t.identifier);
-    e.preventDefault();
+    const t=e.touches[0];begin(t.clientY,'touch',t.identifier);e.preventDefault();
     document.addEventListener('touchmove',touchMove,{passive:false});
     document.addEventListener('touchend',touchEnd,{passive:false});
     document.addEventListener('touchcancel',touchEnd,{passive:false});
   },{passive:false});
-
   row.addEventListener('mousedown',e=>{
-    if(e.button!==0 || e.target.closest('.track-delete'))return;
-    begin(e.clientY,'mouse');
-    e.preventDefault();
-
-    const mm=ev=>move(ev.clientY);
-    const mu=ev=>{
+    if(e.button!==0||e.target.closest('.track-delete'))return;
+    begin(e.clientY,'mouse');e.preventDefault();
+    const mm=ev=>move(ev.clientY),mu=ev=>{
       document.removeEventListener('mousemove',mm);
-      document.removeEventListener('mouseup',mu);
-      finish(ev.clientY);
+      document.removeEventListener('mouseup',mu);finish(ev.clientY);
     };
-    document.addEventListener('mousemove',mm);
-    document.addEventListener('mouseup',mu);
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
   });
+}
+function cancelDrag(){
+  clearDropTargets();
+  if(dragRow)dragRow.classList.remove('dragging');
+  dragRow=null;dragIndex=null;dragMode=null;dragMoved=false;
 }
 
 function openPlaylist(){
-  renderPlaylist();
-  renderStorageInfo();
+  renderPlaylist();renderStorageInfo();
   $('playlistScreen').classList.add('open');
   $('playlistScreen').setAttribute('aria-hidden','false');
 }
@@ -622,9 +603,7 @@ function closePlaylist(){
 }
 $('btnPlaylist').onclick=openPlaylist;
 $('btnClosePlaylist').onclick=closePlaylist;
-$('btnPlaylistAdd').onclick=()=>{$('files').click();};
-$('btnClearStored').onclick=clearAllStoredMusic;
-
+$('btnPlaylistAdd').onclick=()=>$('files').click();
 
 audio.addEventListener('timeupdate',()=>{
   if(!dragging){
@@ -653,14 +632,23 @@ $('seekBar').addEventListener('change',e=>{
   if(d)audio.currentTime=d*(Number(e.target.value)/1000);
   dragging=false;
 });
-function updateUI(){
-  $('btnPlay').classList.toggle('pause',!audio.paused && !!audio.src);
-  $('btnPlay').innerHTML=(!audio.paused && audio.src)
-  ? '<span class="icon">❚❚</span><span class="label">잠시멈춤</span>'
-  : '<span class="icon">▶</span><span class="label">재생</span>';
-  $('count').textContent=playlist.length?`${index+1}곡 중 ${playlist.length}곡`:'아직 음악이 없습니다';
+function formatTime(ms){
+  if(!Number.isFinite(ms)||ms<=0)return '00:00';
+  const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
-loadTracks();
+function updateUI(){
+  $('btnPlay').classList.toggle('pause',!audio.paused&&!!audio.src);
+  $('btnPlay').innerHTML=(!audio.paused&&audio.src)
+    ?'<span class="icon">❚❚</span><span class="label">잠시멈춤</span>'
+    :'<span class="icon">▶</span><span class="label">재생</span>';
+  $('count').textContent=playlist.length
+    ?`${index+1}곡 중 ${playlist.length}곡`
+    :'아직 음악이 없습니다';
+  updateRepeatButton();
+}
+loadIndex();
+
 </script>
 </body>
 </html>
