@@ -149,7 +149,7 @@ input[type=file]{display:none}
     <div class="storage-title">📇 인덱스 방식</div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
-      재생목록에는 파일명·크기 등의 인덱스 정보만 저장합니다.
+      파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
     <button id="btnRelink" class="playlist-add" style="margin-top:10px">🔗 원본 음악 다시 연결</button>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
@@ -186,10 +186,10 @@ input[type=file]{display:none}
 
 <audio id="audio" preload="metadata" playsinline></audio>
 
-<script>
+<script><script>
 
-const APP_VERSION='V3.13 INDEX';
-const KEY='playlist_index_v313';
+const APP_VERSION='V3.14 PURE INDEX';
+const KEY='playlist_index_v314';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
 
@@ -274,20 +274,6 @@ function parseID3Artwork(buf){
   }
   return null;
 }
-async function extractArtwork(file){
-  const n=(file.name||'').toLowerCase();
-  if(!n.endsWith('.mp3'))return null;
-  try{
-    // Read only in memory; never persist the audio blob.
-    const buf=await file.arrayBuffer();
-    return parseID3Artwork(buf);
-  }catch(e){return null}
-}
-function artworkToUrl(art){
-  if(!art)return null;
-  const blob=new Blob([art.bytes],{type:art.mime});
-  return URL.createObjectURL(blob);
-}
 function findExistingByFile(f){
   return playlist.find(t=>
     t.name===f.name &&
@@ -301,38 +287,42 @@ async function addFiles(files){
     $('status').textContent='음악 파일을 선택해 주세요.';
     return;
   }
-  $('status').textContent='음악 인덱스를 만드는 중입니다…';
-  let added=0,relinked=0;
 
+  $('status').textContent='음악 인덱스를 만드는 중입니다…';
+
+  let added=0,relinked=0;
   for(const f of arr){
-    let rec=findExistingByFile(f);
+    // IMPORTANT: metadata only. We do NOT read the file body.
+    const rec=findExistingByFile(f);
     if(rec){
-      fileMap.set(rec.id,f);
-      const art=await extractArtwork(f);
-      if(art)artworkMap.set(rec.id,art);
+      fileMap.set(rec.id,f); // current-session reference only
       relinked++;
       continue;
     }
+
     const id=crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random();
-    rec={id,name:f.name,size:f.size,lastModified:f.lastModified||0,type:f.type||'audio/mpeg'};
-    playlist.push(rec);
+    const item={
+      id,
+      name:f.name,
+      size:Number(f.size)||0,
+      lastModified:Number(f.lastModified)||0,
+      type:f.type||'audio/mpeg'
+    };
+
+    // Store only the index record. The File object itself is NOT persisted.
+    playlist.push(item);
     fileMap.set(id,f);
-    const art=await extractArtwork(f);
-    if(art)artworkMap.set(id,art);
     added++;
   }
 
   saveList();
-  index=Math.max(0,playlist.length-1);
+  if(index>=playlist.length) index=Math.max(0,playlist.length-1);
   renderStorageInfo();
   renderPlaylist();
 
-  if(added||relinked){
-    $('status').textContent=
-      `${added}곡 추가 · ${relinked}곡 원본 연결 완료`;
-    if(fileMap.has(playlist[index]?.id))await loadCurrent(true);
-  }else{
-    $('status').textContent='연결할 음악 파일이 없습니다.';
+  $('status').textContent=`${added}곡 추가 · ${relinked}곡 원본 연결 완료`;
+  if(playlist.length && fileMap.has(playlist[index]?.id)){
+    await loadCurrent(true);
   }
 }
 
