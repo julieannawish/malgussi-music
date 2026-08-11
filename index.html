@@ -152,7 +152,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.23</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.24</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -194,7 +194,7 @@ input[type=file]{display:none}
 
 <script>
 
-const APP_VERSION='V3.23 PURE INDEX';
+const APP_VERSION='V3.24 PURE INDEX';
 const KEY='playlist_index_v321';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -351,12 +351,53 @@ function artworkToUrl(art){
   return URL.createObjectURL(new Blob([art.bytes],{type:art.mime||'image/jpeg'}));
 }
 
+
+function normalizeFileName(name){
+  return (name||'')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/\.[^.]+$/,'')
+    .replace(/[\s_\-]+/g,'')
+    .replace(/[()\[\]{}]/g,'')
+    .replace(/[^a-z0-9가-힣]/g,'');
+}
+function exactFileName(name){
+  return (name||'').toLowerCase().normalize('NFKC');
+}
 function findExistingByFile(f){
-  return playlist.find(t=>
-    t.name===f.name &&
-    Number(t.size)===Number(f.size) &&
-    Number(t.lastModified)===Number(f.lastModified)
+  const fn=exactFileName(f.name);
+  const nn=normalizeFileName(f.name);
+
+  // First: exact filename + size. Do NOT require modification time.
+  let hit=playlist.find(t =>
+    !fileMap.has(t.id) &&
+    exactFileName(t.name)===fn &&
+    Number(t.size||0)===Number(f.size||0)
   );
+  if(hit)return hit;
+
+  // Second: normalized filename + size (handles harmless spacing/symbol differences).
+  hit=playlist.find(t =>
+    !fileMap.has(t.id) &&
+    normalizeFileName(t.name)===nn &&
+    Number(t.size||0)===Number(f.size||0)
+  );
+  if(hit)return hit;
+
+  // Third: exact filename, only when there is a single unmatched candidate.
+  const exactCandidates=playlist.filter(t =>
+    !fileMap.has(t.id) && exactFileName(t.name)===fn
+  );
+  if(exactCandidates.length===1)return exactCandidates[0];
+
+  // Fourth: normalized filename, only when unique.
+  const normalizedCandidates=playlist.filter(t =>
+    !fileMap.has(t.id) && normalizeFileName(t.name)===nn
+  );
+  if(normalizedCandidates.length===1)return normalizedCandidates[0];
+
+  // Never guess when duplicate names exist.
+  return null;
 }
 async function addFiles(files){
   const arr=Array.from(files||[]).filter(isAudioFile);

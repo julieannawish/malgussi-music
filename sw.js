@@ -1,4 +1,4 @@
-const CACHE='malgussi-v3-23-checked';
+const CACHE='malgussi-v3-24-checked';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
 self.addEventListener('install', event => {
