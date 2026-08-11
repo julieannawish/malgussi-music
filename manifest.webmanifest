@@ -1,14 +1,24 @@
 {
-  "name":"말구씨 음악 앱",
-  "short_name":"말구씨 음악",
-  "start_url":"./?v=322",
-  "scope":"./",
-  "display":"standalone",
-  "background_color":"#FFFCF8",
-  "theme_color":"#FFFCF8",
-  "lang":"ko",
-  "icons":[
-    {"src":"app-icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"app-icon.png","sizes":"1024x1024","type":"image/png","purpose":"any maskable"}
+  "name": "말구씨 음악 앱",
+  "short_name": "말구씨 음악",
+  "start_url": "./?v=323",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFFCF8",
+  "theme_color": "#FFFCF8",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
