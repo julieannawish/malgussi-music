@@ -1,4 +1,4 @@
-const CACHE='malgussi-v3-30-final';
+const CACHE='malgussi-v3-31-handle-aware';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
 self.addEventListener('install', event=>{

@@ -175,7 +175,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.30</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.31</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -242,7 +242,49 @@ function saveVerifiedScan(files){
   if(paths.length){const parts=paths[0].split('/');if(parts.length>1)folder=parts[0];}
   try{localStorage.setItem(VERIFIED_SCAN_KEY,JSON.stringify({folder:folder||'최근 음악 폴더',count:arr.length,at:new Date().toISOString()}))}catch(e){}
 }
-const APP_VERSION='V3.30 FINAL';
+
+const MUSIC_DIR_HANDLE_DB='malgussi_music_dir_handle_v1';
+const MUSIC_DIR_HANDLE_STORE='handles';
+async function openMusicHandleDB(){
+  return await new Promise((resolve,reject)=>{
+    const req=indexedDB.open(MUSIC_DIR_HANDLE_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(MUSIC_DIR_HANDLE_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function saveMusicDirectoryHandle(handle){
+  try{
+    if(!handle)return false;
+    const db=await openMusicHandleDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(MUSIC_DIR_HANDLE_STORE,'readwrite');
+      tx.objectStore(MUSIC_DIR_HANDLE_STORE).put(handle,'music');
+      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    });
+    return true;
+  }catch(e){ return false; }
+}
+async function loadMusicDirectoryHandle(){
+  try{
+    const db=await openMusicHandleDB();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(MUSIC_DIR_HANDLE_STORE,'readonly');
+      const req=tx.objectStore(MUSIC_DIR_HANDLE_STORE).get('music');
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){ return null; }
+}
+async function canUseSavedMusicDirectory(){
+  const h=await loadMusicDirectoryHandle();
+  if(!h || typeof h.queryPermission!=='function') return false;
+  try{
+    let p=await h.queryPermission({mode:'read'});
+    return p==='granted';
+  }catch(e){return false;}
+}
+const APP_VERSION='V3.31 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -577,6 +619,11 @@ $('btnPlay').onclick=async()=>{
   if(!playlist.length){$('files').click();return}
   const f=fileMap.get(playlist[index]?.id);
   if(!f){
+    if(await canUseSavedMusicDirectory()){
+      await relinkFolder();
+      const refreshed=fileMap.get(playlist[index]?.id);
+      if(refreshed){ await loadCurrent(true); closePlaylist(); return; }
+    }
     $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
     return;
   }
@@ -623,6 +670,10 @@ function renderPlaylist(){
     main.onclick=async()=>{
       index=i;
       if(!fileMap.has(t.id)){
+        if(await canUseSavedMusicDirectory()){
+          await relinkFolder();
+          if(fileMap.has(t.id)){ await loadCurrent(true); closePlaylist(); return; }
+        }
         $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
         return;
       }
@@ -659,8 +710,8 @@ function renderPlaylist(){
 }
 
 
-// V3.30: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.30_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.31: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.31_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isAudioFile);
@@ -694,16 +745,39 @@ function relinkFromFolder(files){
   if(fileMap.has(playlist[index]?.id)) loadCurrent(false);
 }
 
-function relinkFolder(){
-  if(!playlist.length){ $('status').textContent='먼저 음악을 추가해 주세요.'; return; }
-  const picker=$('folderFiles');
-  if('webkitdirectory' in picker){
-    $('status').textContent='음악 폴더를 선택하면 재생목록 전체를 자동으로 확인합니다.';
-    picker.click();
-  }else{
-    $('status').textContent='이 브라우저에서는 폴더 선택을 지원하지 않아 파일 여러 개 선택으로 진행합니다.';
-    $('files').click();
+async function relinkFolder(){
+  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
+  if(!missing){
+    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
+    return;
   }
+
+  // If a real persistent directory handle exists and permission is still granted,
+  // scan it automatically. This is the desired zero-click startup path.
+  if(await canUseSavedMusicDirectory()){
+    try{
+      const handle=await loadMusicDirectoryHandle();
+      const files=[];
+      for await(const entry of handle.values()){
+        if(entry.kind==='file'){
+          const f=await entry.getFile();
+          files.push(f);
+        }
+      }
+      if(files.length){
+        await relinkFromFolder(files);
+        $('status').textContent='최근 음악 폴더를 자동으로 확인했습니다.';
+        return;
+      }
+    }catch(e){}
+  }
+
+  // iOS Safari 26.x currently reaches this fallback because the standard
+  // showDirectoryPicker() API is not exposed. The user chooses the folder once.
+  $('status').textContent='음악 폴더를 한 번 확인하면 전체 곡을 자동으로 연결·정리합니다.';
+  const picker=$('folderFiles');
+  if('webkitdirectory' in picker) picker.click();
+  else $('files').click();
 }
 
 function relinkFiles(){
