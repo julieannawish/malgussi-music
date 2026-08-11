@@ -19,7 +19,7 @@ button{font:inherit;border:0}
 h1{text-align:center;font-size:25px;margin:0 0 4px;font-weight:800}
 .sub{text-align:center;color:#665D58;font-size:14px;margin-bottom:10px}
 .card{background:#fff;border-radius:22px;padding:12px;box-shadow:0 2px 12px rgba(58,36,26,.08)}
-.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}
+.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.video-art{background:#111}
 .now{text-align:center;font-size:19px;font-weight:800;margin:10px 4px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .count{text-align:center;color:#665D58;font-size:14px;margin-bottom:6px}
 .controls{display:flex;align-items:center;gap:8px;margin-top:8px}
@@ -157,8 +157,8 @@ input[type=file]{display:none}
   var meta=document.querySelector('meta[name="malgussi-build"]');
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
-  if(u.searchParams.get('v')!=='327'){
-    u.searchParams.set('v','327');
+  if(u.searchParams.get('v')!=='334'){
+    u.searchParams.set('v','334');
     location.replace(u.toString());
   }
 })();
@@ -175,13 +175,13 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.33</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.34</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
     <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 지정</button>
-    <div class="relink-help">음악 폴더를 지정하면 재생목록의 곡을 자동으로 연결하고, 없는 곡은 자동으로 정리합니다.<span id="folder-only-hint" class="folder-only-hint">파일은 앱에 복사하지 않습니다.</span></div>
+    <div class="relink-help">음악 폴더를 지정하면 음악과 MP4를 자동으로 연결하고, 없는 곡은 자동으로 정리합니다.<span id="folder-only-hint" class="folder-only-hint">파일은 앱에 복사하지 않습니다.</span></div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
@@ -208,14 +208,14 @@ input[type=file]{display:none}
     <button id="btnRepeat" class="menu green repeat-on">↻　계속 듣기: 켜짐　›</button>
     <button id="btnAdd" class="menu orange">＋　내 음악 넣기　›</button>
 
-    <input id="files" type="file" multiple accept="audio/*,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
-    <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
+    <input id="files" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
+    <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <div id="status" class="status"></div>
     <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
-<audio id="audio" preload="metadata" playsinline></audio>
+<audio id="audio" preload="metadata" playsinline></audio><video id="mainVideo" class="art video-art" controls playsinline preload="metadata" hidden></video>
 
 <script>
 
@@ -283,10 +283,12 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.33 FINAL';
+const APP_VERSION='V3.34 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
+const video=$('mainVideo');
+let activeMedia=audio;
 
 let playlist=[];      // index records only: {id,name,size,lastModified,type}
 let fileMap=new Map(); // File objects live only for the current session
@@ -295,6 +297,27 @@ let index=0;
 let repeatAll=localStorage.getItem('repeatAll')!=='0';
 let objectUrl=null;
 let dragging=false;
+
+function isVideoFile(f){
+  const n=(f.name||'').toLowerCase();
+  const ext=n.includes('.')?n.slice(n.lastIndexOf('.')):'';
+  return ext==='.mp4' || (f.type||'').toLowerCase().startsWith('video/');
+}
+function isMediaFile(f){ return isVideoFile(f) || isAudioFile(f); }
+function setMediaSource(f){
+  if(objectUrl)URL.revokeObjectURL(objectUrl);
+  objectUrl=URL.createObjectURL(f);
+  if(isVideoFile(f)){
+    audio.pause(); audio.removeAttribute('src'); audio.load();
+    video.src=objectUrl; video.hidden=false;
+    $('mainImage').hidden=true;
+    activeMedia=video;
+  }else{
+    video.pause(); video.removeAttribute('src'); video.load();
+    video.hidden=true; $('mainImage').hidden=false;
+    audio.src=objectUrl; activeMedia=audio;
+  }
+}
 
 function formatBytes(bytes){
   if(bytes<1024*1024) return `${(bytes/1024).toFixed(1)} KB`;
@@ -323,7 +346,7 @@ function renderStorageInfo(){
   $('storageInfo').innerHTML =
     `인덱스 ${playlist.length}곡 · 앱에 저장된 음악 파일 <b>0 MB</b><br>`+
     `현재 연결됨 ${connected}곡 · 인덱스 정보 약 ${formatBytes(indexBytes)}<br>`+
-    `<span class="relink-note">※ MP3/M4A 등의 원본 파일은 앱 저장소로 복사하지 않습니다.</span>`;
+    `<span class="relink-note">※ 음악·MP4 원본 파일은 앱 저장소로 복사하지 않습니다.</span>`;
 }
 
 function isAudioFile(f){
@@ -489,7 +512,7 @@ function findExistingByFile(f){
   return null;
 }
 async function addFiles(files){
-  const arr=Array.from(files||[]).filter(isAudioFile);
+  const arr=Array.from(files||[]).filter(isMediaFile);
   if(!arr.length){
     $('status').textContent='음악 파일을 선택해 주세요.';
     return;
@@ -551,8 +574,10 @@ async function loadCurrent(autoplay){
 
   if(!f){
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
-    audio.pause();
-    audio.removeAttribute('src');
+    audio.pause(); audio.removeAttribute('src'); audio.load();
+    video.pause(); video.removeAttribute('src'); video.load(); video.hidden=true;
+    $('mainImage').hidden=false;
+    activeMedia=audio;
     $('now').textContent=t.name;
     $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
     if($('mainImage').dataset.url){
@@ -568,7 +593,7 @@ async function loadCurrent(autoplay){
 
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
-  audio.src=objectUrl;
+  setMediaSource(f);
   $('now').textContent=t.name;
   $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
 
@@ -606,9 +631,9 @@ async function loadCurrent(autoplay){
     });
   }
 
-  audio.load();
+  activeMedia.load();
   if(autoplay){
-    try{await audio.play()}catch(e){}
+    try{await activeMedia.play()}catch(e){}
   }
   $('status').textContent='';
   updateUI();
@@ -626,8 +651,9 @@ $('btnPlay').onclick=async()=>{
     $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 [음악 폴더 지정]을 눌러 주세요.';
     return;
   }
-  if(audio.paused){try{await audio.play()}catch(e){}}
-  else audio.pause();
+  const m=activeMedia||audio;
+  if(m.paused){try{await m.play()}catch(e){}}
+  else m.pause();
   updateUI();
 };
 $('btnPrev').onclick=()=>{if(!playlist.length)return;index=(index-1+playlist.length)%playlist.length;loadCurrent(true)};
@@ -697,7 +723,7 @@ function renderPlaylist(){
       if(index>=playlist.length)index=Math.max(0,playlist.length-1);
       saveList();
       if(playlist.length)loadCurrent(false);
-      else {audio.pause();audio.removeAttribute('src');updateUI();}
+      else {audio.pause();audio.removeAttribute('src');video.pause();video.removeAttribute('src');video.hidden=true;$('mainImage').hidden=false;activeMedia=audio;updateUI();}
       renderPlaylist();
       renderStorageInfo();
     };
@@ -709,12 +735,12 @@ function renderPlaylist(){
 }
 
 
-// V3.33: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.33_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.34: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.34_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
-  const arr=Array.from(files||[]).filter(isAudioFile);
-  if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 파일을 찾지 못했습니다.'; return; }
+  const arr=Array.from(files||[]).filter(isMediaFile);
+  if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 또는 MP4 동영상을 찾지 못했습니다.'; return; }
   $('status').textContent=`폴더의 음악 ${arr.length}개와 재생목록을 자동으로 비교하는 중입니다…`;
   fileMap.clear();
   const used=new Set();
@@ -965,31 +991,37 @@ $('btnPlaylist').onclick=openPlaylist;
 $('btnClosePlaylist').onclick=closePlaylist;
 $('btnPlaylistAdd').onclick=()=>$('files').click();
 
-audio.addEventListener('timeupdate',()=>{
-  if(!dragging){
-    const d=audio.duration||0,p=audio.currentTime||0;
-    $('seekBar').value=d?Math.round(p/d*1000):0;
-    $('tvPosition').textContent=formatTime(p*1000);
-  }
-  $('tvDuration').textContent=formatTime((audio.duration||0)*1000);
-});
-audio.addEventListener('loadedmetadata',()=>{$('tvDuration').textContent=formatTime((audio.duration||0)*1000)});
+function syncMediaUI(){
+  const m=activeMedia||audio;
+  const d=m.duration||0,p=m.currentTime||0;
+  if(!dragging)$('seekBar').value=d?Math.round(p/d*1000):0;
+  $('tvPosition').textContent=formatTime(p*1000);
+  $('tvDuration').textContent=formatTime(d*1000);
+}
+audio.addEventListener('timeupdate',syncMediaUI);
+video.addEventListener('timeupdate',syncMediaUI);
+audio.addEventListener('loadedmetadata',syncMediaUI);
+video.addEventListener('loadedmetadata',syncMediaUI);
 audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
-audio.addEventListener('ended',()=>{
+video.addEventListener('play',updateUI);
+video.addEventListener('pause',updateUI);
+function advanceAfterEnd(){
   if(!playlist.length)return;
   if(index<playlist.length-1){index++;loadCurrent(true)}
   else if(repeatAll){index=0;loadCurrent(true)}
   else updateUI();
-});
+}
+audio.addEventListener('ended',advanceAfterEnd);
+video.addEventListener('ended',advanceAfterEnd);
 $('seekBar').addEventListener('input',e=>{
   dragging=true;
-  const d=audio.duration||0;
+  const d=(activeMedia&&activeMedia.duration)||0;
   $('tvPosition').textContent=formatTime(d*(Number(e.target.value)/1000));
 });
 $('seekBar').addEventListener('change',e=>{
-  const d=audio.duration||0;
-  if(d)audio.currentTime=d*(Number(e.target.value)/1000);
+  const d=(activeMedia&&activeMedia.duration)||0;
+  if(d)activeMedia.currentTime=d*(Number(e.target.value)/1000);
   dragging=false;
 });
 function formatTime(ms){
@@ -998,8 +1030,9 @@ function formatTime(ms){
   return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 function updateUI(){
-  $('btnPlay').classList.toggle('pause',!audio.paused&&!!audio.src);
-  $('btnPlay').innerHTML=(!audio.paused&&audio.src)
+  const m=activeMedia||audio;
+  $('btnPlay').classList.toggle('pause',!m.paused&&!!m.src);
+  $('btnPlay').innerHTML=(!m.paused&&m.src)
     ?'<span class="icon">❚❚</span><span class="label">잠시멈춤</span>'
     :'<span class="icon">▶</span><span class="label">재생</span>';
   $('count').textContent=playlist.length
