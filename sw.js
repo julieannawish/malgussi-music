@@ -1,4 +1,4 @@
-const CACHE='malgussi-v3-39-mp4-video-hide-cover';
+const CACHE='malgussi-v3-40-background-media';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
 self.addEventListener('message', event=>{

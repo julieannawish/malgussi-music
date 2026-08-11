@@ -161,7 +161,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','339');
+    u.searchParams.set('v','340');
     location.replace(u.toString());
   }
 })();
@@ -178,7 +178,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.39</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.40</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -215,7 +215,7 @@ input[type=file]{display:none}
     <input id="files" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <div id="status" class="status"></div>
-    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
+    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다른 앱으로 전환하거나 화면을 잠가도 음악 재생을 계속할 수 있습니다.<br>잠금화면/제어센터에서 이전·재생·다음으로 조작할 수 있습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
@@ -223,6 +223,59 @@ input[type=file]{display:none}
 
 <script>
 
+
+
+// iPhone background / Lock Screen media controls.
+// The browser exposes these through the Media Session API when supported.
+function mediaSessionSupported(){
+  return 'mediaSession' in navigator;
+}
+function setMediaSessionState(state){
+  if(!mediaSessionSupported()) return;
+  try{ navigator.mediaSession.playbackState=state; }catch(e){}
+}
+function setupMediaSessionHandlers(){
+  if(!mediaSessionSupported()) return;
+  const safe=(name,fn)=>{
+    try{navigator.mediaSession.setActionHandler(name,fn)}catch(e){}
+  };
+  safe('play',async()=>{ 
+    const m=activeMedia||audio;
+    try{await m.play();setMediaSessionState('playing');updateUI();}catch(e){}
+  });
+  safe('pause',()=>{
+    const m=activeMedia||audio;
+    m.pause();setMediaSessionState('paused');updateUI();
+  });
+  // Register only track actions so iPhone can show Previous / Play / Next
+  // rather than replacing them with seek controls.
+  safe('previoustrack',()=>{
+    if(!playlist.length)return;
+    index=(index-1+playlist.length)%playlist.length;
+    loadCurrent(true);
+  });
+  safe('nexttrack',()=>{
+    if(!playlist.length)return;
+    index=(index+1)%playlist.length;
+    loadCurrent(true);
+  });
+}
+function updateMediaSessionMetadata(){
+  if(!mediaSessionSupported()) return;
+  const t=playlist[index];
+  if(!t) return;
+  try{
+    navigator.mediaSession.metadata=new MediaMetadata({
+      title:t.name||'말구씨 음악',
+      artist:'말구씨 음악 앱',
+      album:'말구씨 음악 앱',
+      artwork:[
+        {src:new URL('./app-icon.png',location.href).href,sizes:'512x512',type:'image/png'},
+        {src:new URL('./app-icon-192.png',location.href).href,sizes:'192x192',type:'image/png'}
+      ]
+    });
+  }catch(e){}
+}
 
 const RECENT_FOLDER_KEY='malgussi_recent_music_folder_v1';
 function getRecentFolderMeta(){
@@ -287,7 +340,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.39';
+const APP_VERSION='V3.40';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -656,6 +709,8 @@ async function loadCurrent(autoplay){
     try{await activeMedia.play()}catch(e){}
   }
   $('status').textContent='';
+  updateMediaSessionMetadata();
+  setMediaSessionState(autoplay?'playing':'paused');
   updateUI();
 }
 
@@ -672,8 +727,12 @@ $('btnPlay').onclick=async()=>{
     return;
   }
   const m=activeMedia||audio;
-  if(m.paused){try{await m.play()}catch(e){}}
-  else m.pause();
+  if(m.paused){
+    try{await m.play();setMediaSessionState('playing')}catch(e){}
+  }else{
+    m.pause();setMediaSessionState('paused');
+  }
+  updateMediaSessionMetadata();
   updateUI();
 };
 $('btnPrev').onclick=()=>{if(!playlist.length)return;index=(index-1+playlist.length)%playlist.length;loadCurrent(true)};
@@ -755,8 +814,8 @@ function renderPlaylist(){
 }
 
 
-// V3.39: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.39_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.40: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.40_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1049,6 +1108,10 @@ function advanceAfterEnd(){
   else if(repeatAll){index=0;loadCurrent(true)}
   else updateUI();
 }
+audio.addEventListener('play',()=>{setMediaSessionState('playing');updateMediaSessionMetadata();});
+audio.addEventListener('pause',()=>{setMediaSessionState('paused');});
+video.addEventListener('play',()=>{setMediaSessionState('playing');updateMediaSessionMetadata();});
+video.addEventListener('pause',()=>{setMediaSessionState('paused');});
 audio.addEventListener('ended',advanceAfterEnd);
 video.addEventListener('ended',advanceAfterEnd);
 $('seekBar').addEventListener('input',e=>{
@@ -1077,6 +1140,7 @@ function updateUI(){
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
+setupMediaSessionHandlers();
 loadIndex();
 
 </script>
@@ -1091,7 +1155,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=339',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=340',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
