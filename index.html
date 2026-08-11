@@ -175,14 +175,14 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.31</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.32</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
     </div>
-    <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 확인 → 자동 연결·정리</button>
-    <button id="btnRelinkFiles" class="playlist-add secondary-action">🎵 파일 여러 개 선택해서 연결</button>
-    <div class="relink-help">음악 폴더를 확인하면 존재하는 곡은 자동 연결하고 없는 곡은 재생목록에서 자동 정리합니다.</div>
+    <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 지정</button>
+    <button id="btnRelinkFiles" </button>
+    <div class="relink-help">음악 폴더를 지정하면 재생목록의 곡을 자동으로 연결하고, 없는 곡은 자동으로 정리합니다.<span id="folder-only-hint" class="folder-only-hint">파일은 앱에 복사하지 않습니다.</span></div>
     <button id="btnClearStored" class="storage-delete">재생목록 인덱스 모두 삭제</button>
   </div>
 </div>
@@ -284,7 +284,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.31 FINAL';
+const APP_VERSION='V3.32 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -624,7 +624,7 @@ $('btnPlay').onclick=async()=>{
       const refreshed=fileMap.get(playlist[index]?.id);
       if(refreshed){ await loadCurrent(true); closePlaylist(); return; }
     }
-    $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
+    $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 [음악 폴더 지정]을 눌러 주세요.';
     return;
   }
   if(audio.paused){try{await audio.play()}catch(e){}}
@@ -674,7 +674,7 @@ function renderPlaylist(){
           await relinkFolder();
           if(fileMap.has(t.id)){ await loadCurrent(true); closePlaylist(); return; }
         }
-        $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 음악 폴더를 확인해 주세요.';
+        $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 [음악 폴더 지정]을 눌러 주세요.';
         return;
       }
       await loadCurrent(true);
@@ -710,8 +710,8 @@ function renderPlaylist(){
 }
 
 
-// V3.31: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.31_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.32: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.32_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isAudioFile);
@@ -774,7 +774,7 @@ async function relinkFolder(){
 
   // iOS Safari 26.x currently reaches this fallback because the standard
   // showDirectoryPicker() API is not exposed. The user chooses the folder once.
-  $('status').textContent='음악 폴더를 한 번 확인하면 전체 곡을 자동으로 연결·정리합니다.';
+  $('status').textContent='음악 폴더를 지정하면 전체 곡을 자동으로 연결하고 없는 곡을 정리합니다.';
   const picker=$('folderFiles');
   if('webkitdirectory' in picker) picker.click();
   else $('files').click();
