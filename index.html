@@ -175,7 +175,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.27</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.28</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -233,7 +233,7 @@ function saveRecentFolderMeta(files){
   if(paths.length){const parts=paths[0].split('/'); if(parts.length>1) folder=parts[0];}
   try{localStorage.setItem(RECENT_FOLDER_KEY,JSON.stringify({name:folder||'최근 음악 폴더',fileCount:arr.length,savedAt:new Date().toISOString()}))}catch(e){}
 }
-const APP_VERSION='V3.27 FINAL';
+const APP_VERSION='V3.28 FINAL';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -504,14 +504,14 @@ async function loadCurrent(autoplay){
     audio.pause();
     audio.removeAttribute('src');
     $('now').textContent=t.name;
-    $('count').textContent=`${index+1}곡 중 ${playlist.length}곡 · 원본 연결 필요`;
+    $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
     if($('mainImage').dataset.url){
       URL.revokeObjectURL($('mainImage').dataset.url);
       $('mainImage').removeAttribute('data-url');
     }
     $('mainImage').src='dog_default.png';
-    $('mainImage').alt='원본 음악을 다시 연결해 주세요';
-    $('status').textContent='이 곡의 원본 파일이 연결되지 않았습니다. 재생목록 관리에서 「원본 음악 다시 연결」을 눌러 주세요.';
+    $('mainImage').alt='음악 폴더를 선택해 주세요';
+    $('status').textContent='이 음악을 재생하려면 음악 폴더를 한 번 선택해 주세요.';
     updateUI();
     return;
   }
@@ -605,7 +605,7 @@ function renderPlaylist(){
     const row=document.createElement('div');
     row.className='track-row';
     row.classList.toggle('selected', i===index);
-    row.className='track-row'+(i===index?' current':'')+(!fileMap.has(t.id)?' disconnected':'');
+    row.className='track-row'+(i===index?' current':'');
     row.dataset.index=i;
 
     const main=document.createElement('button');
@@ -615,9 +615,8 @@ function renderPlaylist(){
     main.onclick=async()=>{
       index=i;
       if(!fileMap.has(t.id)){
-        const missing=playlist.filter(x=>!fileMap.has(x.id)).length;
-        $('status').textContent=`원본 연결이 필요한 ${missing}곡을 한꺼번에 선택해 주세요.`;
-        $('files').click();
+        $('status').textContent='음악 폴더를 선택하면 목록과 자동으로 매칭합니다.';
+        $('folderFiles').click();
         return;
       }
       await loadCurrent(true);
@@ -626,7 +625,7 @@ function renderPlaylist(){
 
     const state=document.createElement('span');
     state.className='track-state';
-    state.textContent=fileMap.has(t.id)?'연결됨':'원본 연결 필요';
+    state.textContent='';
 
     const del=document.createElement('button');
     del.className='track-delete';
@@ -656,85 +655,40 @@ function renderPlaylist(){
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isAudioFile);
-  const missingBefore=playlist.filter(t=>!fileMap.has(t.id)).length;
-
-  if(!missingBefore){
-    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
-    return;
-  }
-  if(!arr.length){
-    $('status').textContent='선택한 폴더에서 음악 파일을 찾지 못했습니다.';
-    return;
-  }
-
-  $('status').textContent=`폴더의 음악 ${arr.length}개를 확인하는 중입니다…`;
-
-  let connected=0, ambiguous=0;
+  if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 파일을 찾지 못했습니다.'; return; }
+  $('status').textContent=`폴더의 음악 ${arr.length}개와 재생목록을 자동으로 비교하는 중입니다…`;
+  fileMap.clear();
   const used=new Set();
-
-  // Folder mode is intentionally RELINK-ONLY: it never adds unrelated files
-  // from the selected folder to the playlist.
+  let connected=0;
   for(const t of playlist){
-    if(fileMap.has(t.id)) continue;
-
-    const candidates=arr.filter(f=>{
-      if(used.has(f)) return false;
-      const fn=exactFileName(f.name);
-      const nn=normalizeFileName(f.name);
-      return (fn===exactFileName(t.name) && Number(f.size||0)===Number(t.size||0)) ||
-             (nn===normalizeFileName(t.name) && Number(f.size||0)===Number(t.size||0));
-    });
-
-    if(candidates.length===1){
-      fileMap.set(t.id,candidates[0]);
-      used.add(candidates[0]);
-      connected++;
-      continue;
-    }
-
-    // If size differs (e.g. an exported copy), allow a unique filename match.
-    const uniqueName=arr.filter(f=>{
-      if(used.has(f)) return false;
-      return exactFileName(f.name)===exactFileName(t.name);
-    });
-    if(uniqueName.length===1){
-      fileMap.set(t.id,uniqueName[0]);
-      used.add(uniqueName[0]);
-      connected++;
-      continue;
-    }
-
-    if(candidates.length>1 || uniqueName.length>1) ambiguous++;
+    const fn=exactFileName(t.name), nn=normalizeFileName(t.name);
+    let candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn&&Number(f.size||0)===Number(t.size||0));
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn);
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn);
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
   }
-
-  renderPlaylist();
-  renderStorageInfo();
-  updateUI();
-
-  const remaining=playlist.filter(t=>!fileMap.has(t.id)).length;
-  if(remaining===0){
-    $('status').textContent=`좋아요! ${connected}곡을 자동으로 모두 연결했습니다.`;
-  }else if(ambiguous){
-    $('status').textContent=`${connected}곡 자동 연결 · ${remaining}곡은 이름이 중복되어 확인이 필요합니다.`;
-  }else{
-    $('status').textContent=`${connected}곡 자동 연결 · ${remaining}곡은 이 폴더에서 찾지 못했습니다.`;
+  const before=playlist.length;
+  playlist=playlist.filter(t=>fileMap.has(t.id));
+  const removed=before-playlist.length;
+  if(index>=playlist.length)index=Math.max(0,playlist.length-1);
+  saveList(); renderPlaylist(); renderStorageInfo(); updateUI();
+  if(!playlist.length){
+    $('status').textContent='폴더에서 재생목록 음악을 찾지 못해 목록을 정리했습니다.';
+    audio.pause(); audio.removeAttribute('src'); return;
   }
-
-  if(playlist.length && fileMap.has(playlist[index]?.id)){
-    loadCurrent(false);
-  }
+  $('status').textContent=removed?`${connected}곡 자동 연결 · 찾지 못한 ${removed}곡은 재생목록에서 삭제했습니다.`:`${connected}곡을 자동으로 모두 연결했습니다.`;
+  if(fileMap.has(playlist[index]?.id)) loadCurrent(false);
 }
 
 function relinkFolder(){
-  const missing=playlist.filter(t=>!fileMap.has(t.id)).length;
-  if(!missing){
-    $('status').textContent='현재 모든 곡이 연결되어 있습니다.';
-    return;
-  }
-
+  if(!playlist.length){ $('status').textContent='먼저 음악을 추가해 주세요.'; return; }
   const picker=$('folderFiles');
   if('webkitdirectory' in picker){
-    $('status').textContent=`음악 폴더를 선택하면 ${missing}곡을 자동으로 찾아 연결합니다.`;
+    $('status').textContent='음악 폴더를 선택하면 재생목록 전체를 자동으로 확인합니다.';
     picker.click();
   }else{
     $('status').textContent='이 브라우저에서는 폴더 선택을 지원하지 않아 파일 여러 개 선택으로 진행합니다.';
