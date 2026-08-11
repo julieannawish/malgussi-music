@@ -70,6 +70,12 @@ input[type=range]{width:100%;accent-color:#2457A6}
   text-align:center;color:#665D58;
   padding:50px 15px;font-size:17px;line-height:1.6
 }
+
+.track-row.selected{
+  outline:2px solid rgba(139,102,74,.55);
+  background:#F4E8DC !important;
+  box-shadow:inset 4px 0 0 #8B664A;
+}
 .track-row{
   display:flex;align-items:center;gap:8px;
   background:#fff;border:1px solid #eadfd7;
@@ -155,7 +161,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.25</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.26</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -200,7 +206,7 @@ input[type=file]{display:none}
 
 <script>
 
-const APP_VERSION='V3.25 FOLDER RELINK';
+const APP_VERSION='V3.26 FOLDER RELINK';
 const KEY='playlist_index_v321';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -570,6 +576,8 @@ function renderPlaylist(){
   box.innerHTML='';
   playlist.forEach((t,i)=>{
     const row=document.createElement('div');
+    row.className='track-row';
+    row.classList.toggle('selected', i===index);
     row.className='track-row'+(i===index?' current':'')+(!fileMap.has(t.id)?' disconnected':'');
     row.dataset.index=i;
 
@@ -935,6 +943,22 @@ function updateUI(){
 }
 loadIndex();
 
+</script>
+
+<script data-selection-highlight-handler>
+document.addEventListener('click', function(e){
+  const row=e.target.closest('.track-row');
+  if(!row) return;
+  const i=Number(row.dataset.index);
+  if(!Number.isInteger(i)) return;
+  if(typeof index!=='undefined' && index!==i){
+    index=i;
+    document.querySelectorAll('.track-row.selected').forEach(el=>el.classList.remove('selected'));
+    row.classList.add('selected');
+  }else{
+    document.querySelectorAll('.track-row').forEach((el,n)=>el.classList.toggle('selected',n===i));
+  }
+});
 </script>
 </body>
 </html>
