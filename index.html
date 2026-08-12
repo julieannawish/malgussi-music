@@ -263,7 +263,7 @@ input[type=file]{display:none}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.67</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.68</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -505,7 +505,7 @@ async function loadMusicDirectoryHandle(){
   }catch(e){ return null; }
 }
 
-// V3.67: iOS/PWA에서는 선택한 폴더의 File 객체를 재실행 후 다시 얻을 수 없을 수 있으므로
+// V3.68: iOS/PWA에서는 선택한 폴더의 File 객체를 재실행 후 다시 얻을 수 없을 수 있으므로
 // 한 번 지정한 기본 미디어의 기존 파일을 IndexedDB에 보존한다.
 const MEDIA_CACHE_DB='malgussi_media_cache_v1';
 const MEDIA_CACHE_STORE='files';
@@ -553,7 +553,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.67';
+const APP_VERSION='V3.68';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1628,7 +1628,7 @@ let mediaFiles=[];
       q('status').textContent='파일을 선택하지 않았습니다.';
       return;
     }
-    // V3.67: the single '+ 추가' action means 'pick files and add them'.
+    // V3.68: the single '+ 추가' action means 'pick files and add them'.
     // Do not require a second confirmation button after the native picker.
     let added=0;
     const wasEmpty=playlist.length===0;
