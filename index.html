@@ -201,7 +201,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','346');
+    u.searchParams.set('v','348');
     location.replace(u.toString());
   }
 })();
@@ -218,7 +218,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.46</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.48</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일  style="position:relative;">의 인덱스만 저장합니다.
@@ -386,86 +386,30 @@ function refreshMediaSessionForPlayback(){
   setMediaSessionState('playing');
 }
 
-async function extractVideoArtwork(f){
-  try{
-    // Prefer the actual player element. This avoids a second hidden video
-    // decoder, which can fail in iOS Home Screen web apps.
-    const target=video;
-    if(target && target.readyState>=2 && target.videoWidth>0 && target.videoHeight>0){
-      try{
-        if(isFinite(target.duration) && target.duration>0){
-          const wanted=Math.min(0.5,Math.max(0.05,target.duration/20));
-          if(Math.abs((target.currentTime||0)-wanted)>0.05){
-            await new Promise((resolve)=>{
-              let done=false;
-              const finish=()=>{if(done)return;done=true;target.removeEventListener('seeked',finish);resolve()};
-              target.addEventListener('seeked',finish,{once:true});
-              setTimeout(finish,1800);
-              try{target.currentTime=wanted}catch(e){finish()}
-            });
-          }
-        }
-        const max=512;
-        const scale=Math.min(1,max/Math.max(target.videoWidth,target.videoHeight));
-        const canvas=document.createElement('canvas');
-        canvas.width=Math.max(1,Math.round(target.videoWidth*scale));
-        canvas.height=Math.max(1,Math.round(target.videoHeight*scale));
-        const ctx=canvas.getContext('2d',{willReadFrequently:false});
-        ctx.drawImage(target,0,0,canvas.width,canvas.height);
-        const data=canvas.toDataURL('image/jpeg',0.88);
-        if(data && data.length>1000){
-          return {dataUrl:data,mime:'image/jpeg'};
-        }
-      }catch(e){}
-    }
-
-    // Fallback: a dedicated decoder, only if the main video is not ready yet.
-    const src=URL.createObjectURL(f);
-    const v=document.createElement('video');
-    v.muted=true;
-    v.playsInline=true;
-    v.preload='auto';
-    v.src=src;
-    await new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new Error('metadata timeout')),6000);
-      v.onloadeddata=()=>{clearTimeout(timer);resolve()};
-      v.onerror=()=>{clearTimeout(timer);reject(new Error('video error'))};
-    });
-    if(v.videoWidth<=0||v.videoHeight<=0)throw new Error('no video frame');
-    await new Promise(resolve=>{
-      let done=false;
-      const finish=()=>{if(done)return;done=true;v.removeEventListener('seeked',finish);resolve()};
-      v.addEventListener('seeked',finish,{once:true});
-      setTimeout(finish,1800);
-      try{v.currentTime=Math.min(.5,Math.max(.05,(v.duration||1)/20))}catch(e){finish()}
-    });
-    const max=512,scale=Math.min(1,max/Math.max(v.videoWidth,v.videoHeight));
-    const canvas=document.createElement('canvas');
-    canvas.width=Math.max(1,Math.round(v.videoWidth*scale));
-    canvas.height=Math.max(1,Math.round(v.videoHeight*scale));
-    canvas.getContext('2d').drawImage(v,0,0,canvas.width,canvas.height);
-    const data=canvas.toDataURL('image/jpeg',0.88);
-    v.removeAttribute('src');v.load();URL.revokeObjectURL(src);
-    return data&&data.length>1000?{dataUrl:data,mime:'image/jpeg'}:null;
-  }catch(e){return null}
-}
-
 function updateMediaSessionMetadata(artworkOverride){
   if(!mediaSessionSupported()) return;
   const t=playlist[index];
   if(!t) return;
 
   const embedded=artworkOverride||artworkMap.get(t.id)||null;
-  const cover=embedded?.dataUrl || artworkToDataUrl(embedded);
+  const cover=embedded?.blobUrl || artworkToDataUrl(embedded);
   const fallback=new URL('./app-icon.png',location.href).href;
 
   try{
     const artwork=[];
     if(cover){
-      artwork.push({src:cover,sizes:'512x512',type:embedded.mime||'image/jpeg'});
+      artwork.push({
+        src:cover,
+        sizes:'512x512',
+        type:embedded?.mime||'image/jpeg'
+      });
     }else{
       artwork.push({src:fallback,sizes:'512x512',type:'image/png'});
-      artwork.push({src:new URL('./app-icon-192.png',location.href).href,sizes:'192x192',type:'image/png'});
+      artwork.push({
+        src:new URL('./app-icon-192.png',location.href).href,
+        sizes:'192x192',
+        type:'image/png'
+      });
     }
 
     navigator.mediaSession.metadata=new MediaMetadata({
@@ -540,7 +484,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.46';
+const APP_VERSION='V3.48';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -684,40 +628,66 @@ function parseMP4Artwork(buf){
   const b=new Uint8Array(buf);
   function u32(p){return ((b[p]<<24)|(b[p+1]<<16)|(b[p+2]<<8)|b[p+3])>>>0}
   function type(p){return String.fromCharCode(b[p],b[p+1],b[p+2],b[p+3])}
+
   function scan(start,end){
     let p=start;
     while(p+8<=end){
-      let size=u32(p), typ=type(p+4), head=8;
+      let size=u32(p),typ=type(p+4),head=8;
       if(size===1){
         if(p+16>end)return null;
-        const hi=u32(p+8),lo=u32(p+12);
-        size=hi*4294967296+lo; head=16;
+        size=u32(p+8)*4294967296+u32(p+12);
+        head=16;
       }else if(size===0){
         size=end-p;
       }
-      if(size<head || p+size>end)return null;
-      const a=p+head, z=p+size;
+      if(size<head || p+size>end){
+        // A malformed/non-standard atom should not prevent searching
+        // the rest of the parent container.
+        p+=8;
+        continue;
+      }
+
+      const a=p+head,z=p+size;
+
+      // Quick direct covr atom search.
       if(typ==='covr'){
         let q=a;
         while(q+8<=z){
-          let s=u32(q), t=type(q+4), h=8;
-          if(s===0)s=z-q;
-          if(s<h || q+s>z)break;
-          const payload=b.slice(q+h,q+s);
-          if(t==='data' && payload.length>8){
-            const flags=(payload[0]<<24)|(payload[1]<<16)|(payload[2]<<8)|payload[3];
-            const img=payload.slice(8);
-            let mime='image/jpeg';
-            if(img[0]===0x89&&img[1]===0x50&&img[2]===0x4e&&img[3]===0x47)mime='image/png';
-            if(img.length>20 && (mime==='image/jpeg'||mime==='image/png'))
-              return {mime,bytes:img};
+          let s=u32(q),t=type(q+4),hh=8;
+          if(s===1){
+            if(q+16>z)break;
+            s=u32(q+8)*4294967296+u32(q+12);hh=16;
+          }else if(s===0){
+            s=z-q;
+          }
+          if(s<hh || q+s>z)break;
+
+          if(t==='data'){
+            const payload=b.slice(q+hh,q+s);
+            // data atom: 4-byte type/flags + 4-byte reserved + image bytes.
+            if(payload.length>8){
+              const img=payload.slice(8);
+              let mime='';
+              if(img.length>=8 &&
+                 img[0]===0x89&&img[1]===0x50&&img[2]===0x4e&&img[3]===0x47)
+                mime='image/png';
+              else if(img.length>=3 &&
+                      img[0]===0xff&&img[1]===0xd8&&img[2]===0xff)
+                mime='image/jpeg';
+              if(mime)return {mime,bytes:img};
+            }
           }
           q+=s;
         }
       }
-      if(['moov','udta','meta','ilst','----'].includes(typ)){
-        const r=scan(a+(typ==='meta'?4:0),z);
-        if(r)return r;
+
+      // Container atoms. meta has a 4-byte FullBox version/flags field.
+      if(['moov','udta','meta','ilst','trak','mdia','minf','stbl'].includes(typ)){
+        const childStart=typ==='meta'?a+4:a;
+        if(childStart<z){
+          const r=scan(childStart,z);
+          if(r)return r;
+        }
       }
       p+=size;
     }
@@ -897,51 +867,34 @@ async function loadCurrent(autoplay){
   }
 
   let currentArtwork=null;
+
+  // MP3/M4A/MP4 모두 "파일에 내장된 artwork"를 우선 사용한다.
+  // MP4는 영상 프레임을 잠금화면 artwork로 사용하지 않는다.
+  if(artworkMap.has(t.id)){
+    currentArtwork=artworkMap.get(t.id);
+  }else{
+    currentArtwork=await extractArtwork(f);
+    if(currentArtwork) artworkMap.set(t.id,currentArtwork);
+  }
+
   if(!isVideoFile(f)){
-    if(artworkMap.has(t.id)){
-      currentArtwork=artworkMap.get(t.id);
-      const u=artworkToUrl(currentArtwork);
-      if(u){
-        $('mainImage').src=u;
-        $('mainImage').dataset.url=u;
-        $('mainImage').alt='앨범 커버';
-      }else{
-        $('mainImage').src='dog_default.png';
-        $('mainImage').alt='말구씨 기본 강아지 이미지';
-      }
-    }else{
-      $('mainImage').src='dog_default.png';
-      $('mainImage').alt='말구씨 기본 강아지 이미지';
-      currentArtwork=await extractArtwork(f);
-      if(currentArtwork) artworkMap.set(t.id,currentArtwork);
-      if(playlist[index]?.id===t.id){
-        if($('mainImage').dataset.url){
-          URL.revokeObjectURL($('mainImage').dataset.url);
-          $('mainImage').removeAttribute('data-url');
-        }
-        const u=currentArtwork?artworkToUrl(currentArtwork):null;
-        $('mainImage').src=u||'dog_default.png';
-        if(u)$('mainImage').dataset.url=u;
-        $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
-      }
-    }
+    const u=currentArtwork?artworkToUrl(currentArtwork):null;
+    $('mainImage').src=u||'dog_default.png';
+    $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
+    if(u)$('mainImage').dataset.url=u;
   }else{
     $('mainImage').hidden=true;
-    // MP4 has no ID3-style album artwork. Create a thumbnail from the
-    // actual video frame for the Lock Screen Now Playing artwork.
-    currentArtwork=await extractVideoArtwork(f);
+  }
+
+  // Media Session에는 embedded artwork를 Blob URL로 전달한다.
+  // 이렇게 하면 MP4/MP3 모두 iPhone 잠금화면에서 동일한 artwork 규칙을 사용한다.
+  if(currentArtwork){
+    const mediaUrl=artworkToUrl(currentArtwork);
+    currentArtwork={...currentArtwork,blobUrl:mediaUrl};
+    artworkMap.set(t.id,currentArtwork);
   }
 
   activeMedia.load();
-  if(isVideoFile(f) && !currentArtwork){
-    await new Promise(resolve=>{
-      let done=false;
-      const finish=()=>{if(done)return;done=true;video.removeEventListener('loadeddata',finish);resolve()};
-      video.addEventListener('loadeddata',finish,{once:true});
-      setTimeout(finish,2500);
-    });
-    currentArtwork=await extractVideoArtwork(f);
-  }
   if(autoplay){
     try{await activeMedia.play()}catch(e){}
   }
@@ -1051,8 +1004,8 @@ function renderPlaylist(){
 }
 
 
-// V3.46: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.46_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.48: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.48_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1397,7 +1350,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=346',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=348',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});

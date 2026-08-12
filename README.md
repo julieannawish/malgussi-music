@@ -1,23 +1,17 @@
-말구씨 음악 앱 V3.46 — 영상 프레임 UI 위치 + MP4 잠금화면 artwork 보강
+말구씨 음악 앱 V3.48 — MP4 잠금화면은 내장 커버 우선
 
-1. MP4 영상 프레임 UI
-- PiP(작은 화면) ↗ 아이콘과 AirPlay 아이콘을 영상 프레임 내부의 최상단 오른쪽에 배치
-- 재생/이전/다음 버튼 영역과 완전히 분리
-- AirPlay 아이콘은 WebKit AirPlay picker가 실제 제공될 때만 표시
-- PiP 아이콘은 실제 PiP가 지원될 때만 표시
+핵심 규칙
+- MP3/M4A: 내장 앨범커버가 있으면 사용, 없으면 말구씨 앱 아이콘
+- MP4: 파일 내부의 covr(내장 artwork)를 찾아 사용, 없으면 말구씨 앱 아이콘
+- MP4 영상 프레임을 잠금화면 artwork로 사용하지 않음
+- 앱 안의 MP4 영상 화면은 기존처럼 정상 재생
 
-2. MP4 잠금화면 artwork
-- 별도 숨은 video decoder보다 현재 재생 중인 실제 video element의 프레임을 우선 캡처
-- loadeddata 이후 프레임 캡처하도록 순서를 조정
-- 실패할 경우 별도 decoder로 재시도
-- 캡처 실패 시 기존 fallback(말구씨 앱 아이콘)
+MP4 artwork 처리
+- MP4/M4A 컨테이너의 moov/udta/meta/ilst/covr/data 구조를 탐색
+- JPEG/PNG 내장 커버 추출
+- 잠금화면 Media Session에는 추출된 artwork의 Blob URL을 전달
 
-3. MP3/M4A
-- 내장 커버가 있으면 그 커버
-- 없으면 말구씨 앱 아이콘
-
-4. 기존 기능 유지
-- 백그라운드 재생
-- 잠금화면 이전/재생/다음
-- 음악 폴더 자동 연결 및 없는 항목 정리
-- MP4 재생
+UI
+- MP4 영상 우측 상단 ↗ PiP 아이콘
+- AirPlay 아이콘
+- 기존 백그라운드/잠금화면 이전·재생·다음 유지
