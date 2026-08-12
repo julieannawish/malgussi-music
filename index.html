@@ -552,7 +552,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.65';
+const APP_VERSION='V3.66';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -939,10 +939,11 @@ $('files').addEventListener('change',async e=>{
   if(selected.length){
     mediaFiles=selected;
     msel.clear();
+    try{ await cacheMediaFiles(selected); }catch(e){}
     if(document.getElementById('v352Media')?.classList.contains('open')){
       renderMedia();
     }
-    $('status').textContent=`${selected.length}개 파일을 불러왔습니다. 추가할 파일을 선택하세요.`;
+    $('status').textContent=`${selected.length}개 파일을 불러왔습니다. 원하는 파일을 선택하세요.`;
   }
   e.target.value='';
 });
@@ -1608,14 +1609,19 @@ let mediaFiles=[];
   document.querySelectorAll('[data-v352-close]').forEach(b=>b.onclick=()=>close(b.dataset.v352Close));
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
-  q('v352OpenMedia').onclick=async()=>{
-    // + 추가는 별도의 파일 선택창을 여는 것이 아니라,
-    // 설정에서 지정한 '기본 미디어 폴더'의 목록을 바로 보여준다.
+  q('v352OpenMedia').onclick=()=>{
+    // Keep this handler synchronous at the tap. iOS may reject a picker
+    // opened after an awaited permission/database operation.
     msel.clear();
     mediaFiles=[];
     open('v352Media');
-    q('status').textContent='기본 미디어 폴더를 확인하는 중입니다…';
-    await loadMediaForPicker(true);
+    q('status').textContent='기본 미디어를 불러오는 중입니다…';
+    const picker=q('files');
+    if(picker){ picker.value=''; picker.click(); }
+    loadMediaForPicker(true).then(ok=>{
+      if(ok) q('status').textContent='기본 미디어 파일을 선택하세요.';
+      else q('status').textContent='파일을 선택하세요.';
+    }).catch(()=>{ q('status').textContent='파일을 선택하세요.'; });
   }; q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
   q('v352Name').oninput=e=>{prof.name=e.target.value;saveProf()}; q('v352Tagline').oninput=e=>{prof.tagline=e.target.value;saveProf()};
@@ -1750,7 +1756,7 @@ let mediaFiles=[];
     toast2(n+'곡을 재생목록에 추가했습니다.');
   };
   function toast2(m){q('status').textContent=m;setTimeout(()=>{if(q('status').textContent===m)q('status').textContent=''},1800)}
-  function renderPL(){const box=q('v352PlaylistList');box.innerHTML='';if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return}playlist.forEach((t,i)=>{const row=document.createElement('div');row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');row.dataset.i=i;const c=document.createElement('button');c.className='v352-check'+(psel.has(t.id)?' on':'');c.textContent=psel.has(t.id)?'✓':'';c.onclick=e=>{e.stopPropagation();toggleP(t.id)};const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');const info=document.createElement('div');info.className='v352-info';const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');info.append(nm,su);const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';row.append(c,n,info,d);row.onclick=()=>{if(psel.size)return;index=i;loadCurrent(true);close('v352Playlist')};setupSlide(row);setupMove(row,d);box.append(row)});updatePF()}
+  function renderPL(){const box=q('v352PlaylistList');box.innerHTML='';if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return}playlist.forEach((t,i)=>{const row=document.createElement('div');row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');row.dataset.i=i;const c=document.createElement('button');c.className='v352-check'+(psel.has(t.id)?' on':'');c.textContent=psel.has(t.id)?'✓':'';c.onclick=e=>{e.stopPropagation();toggleP(t.id)};const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');const info=document.createElement('div');info.className='v352-info';const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 저장됨');info.append(nm,su);const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';row.append(c,n,info,d);row.onclick=()=>{if(psel.size)return;index=i;loadCurrent(true);close('v352Playlist')};setupSlide(row);setupMove(row,d);box.append(row)});updatePF()}
   function toggleP(id){psel.has(id)?psel.delete(id):psel.add(id);renderPL()}
   function updatePF(){q('v352SelectedCount').textContent='선택 '+psel.size+'개';q('v352Delete').disabled=!psel.size;q('v352Delete').style.opacity=psel.size?1:.5}
   function setupSlide(row){let active=false,seen=new Set();row.addEventListener('pointerdown',e=>{if(e.target.closest('.v352-drag'))return;active=true;seen.clear();const id=playlist[+row.dataset.i]?.id;if(id){toggleP(id);seen.add(id)}row.setPointerCapture?.(e.pointerId);e.preventDefault()});row.addEventListener('pointermove',e=>{if(!active)return;const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(!r)return;const id=playlist[+r.dataset.i]?.id;if(id&&!seen.has(id)){toggleP(id);seen.add(id)}});['pointerup','pointercancel'].forEach(ev=>row.addEventListener(ev,()=>active=false))}
@@ -1791,8 +1797,16 @@ let mediaFiles=[];
         }
         if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files);}
       }else{
+        // Cached files are a recovery source, not an explicit folder scan.
+        // Never delete playlist entries merely because the cache is incomplete.
         const cached=await loadCachedMediaFiles();
-        if(cached.length) await relinkFromFolder(cached);
+        if(cached.length){
+          const used=new Set();
+          for(const t of playlist){
+            const f=cached.find(x=>!used.has(x) && exactFileName(x.name)===exactFileName(t.name) && Number(x.size||0)===Number(t.size||0));
+            if(f){ fileMap.set(t.id,f); used.add(f); }
+          }
+        }
       }
       if(playlist.length) await loadCurrent(false);
       else updateUI();
