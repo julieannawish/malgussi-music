@@ -1,20 +1,10 @@
-말구씨 음악 앱 V3.49 — MP4 내장커버 추출 오류 수정
+말구씨 음악 앱 V3.51 — MP4 화면을 음악 커버 프레임과 동일한 한 화면으로 수정
 
-중요 수정:
-V3.48에서 MP4의 covr/data atom을 찾았지만 data atom 안의 실제 이미지 시작 위치를 잘못 해석했습니다.
-
-QuickTime/iTunes MP4 artwork data 구조:
-- version/flags 4바이트
-- artwork type 4바이트
-- locale/reserved 4바이트
-- 실제 JPEG/PNG 이미지 데이터
-
-V3.49에서는 실제 이미지 시작을 +12바이트부터 읽고,
-artwork type 13=JPEG, 14=PNG도 함께 인식합니다.
-
-잠금화면 규칙:
-- MP3/M4A: 내장커버 → 없으면 앱 아이콘
-- MP4: 내장커버 → 없으면 앱 아이콘
-- MP4 영상 프레임은 잠금화면 artwork로 사용하지 않음
-
-앱 안의 MP4 영상 재생은 그대로 유지합니다.
+핵심 수정:
+- MP4 선택 시 위쪽에 강아지 로고가 남아 있던 문제 수정
+- 원인은 .art의 display:block CSS가 HTML hidden 속성을 덮어쓴 것이었음
+- MP4 재생 시 강아지 이미지 영역을 완전히 숨김
+- MP4 영상은 하나의 videoFrame 안에서 전체 표시
+- MP3처럼 한 개의 메인 프레임 영역만 사용
+- MP4 종료/다른 곡 전환 시에도 videoFrame과 artwork 영역이 확실히 교체됨
+- 기존 MP4 내장커버/잠금화면 처리, PiP, AirPlay, 백그라운드/잠금화면 이전·재생·다음 유지

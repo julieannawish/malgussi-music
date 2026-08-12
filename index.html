@@ -19,7 +19,7 @@ button{font:inherit;border:0}
 h1{text-align:center;font-size:25px;margin:0 0 4px;font-weight:800}
 .sub{text-align:center;color:#665D58;font-size:14px;margin-bottom:10px}
 .card{background:#fff;border-radius:22px;padding:12px;box-shadow:0 2px 12px rgba(58,36,26,.08)}
-.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.video-art{background:#111;display:none}.video-art.video-active{display:block}
+.art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.art[hidden]{display:none!important}.video-art{background:#111;display:none}.video-art.video-active{display:block}
 .now{text-align:center;font-size:19px;font-weight:800;margin:10px 4px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .count{text-align:center;color:#665D58;font-size:14px;margin-bottom:6px}
 .controls{display:flex;align-items:center;gap:8px;margin-top:8px}
@@ -156,6 +156,7 @@ input[type=file]{display:none}
   border-radius:18px;
   overflow:hidden;
   background:#111;
+  display:block;
 }
 .video-frame[hidden]{display:none!important}
 .video-player{
@@ -201,7 +202,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','349');
+    u.searchParams.set('v','351');
     location.replace(u.toString());
   }
 })();
@@ -218,7 +219,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.49</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.51</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일  style="position:relative;">의 인덱스만 저장합니다.
@@ -484,7 +485,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.49';
+const APP_VERSION='V3.51';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -514,6 +515,20 @@ function isVideoFile(f){
   return ext==='.mp4' || (f.type||'').toLowerCase().startsWith('video/');
 }
 function isMediaFile(f){ return isVideoFile(f) || isAudioFile(f); }
+function showVideoFrameOnly(){
+  $('mainImage').hidden=true;
+  $('mainImage').style.display='none';
+  $('videoFrame').hidden=false;
+  $('videoFrame').style.display='block';
+  video.hidden=false;
+}
+function showArtworkFrame(){
+  $('videoFrame').hidden=true;
+  $('videoFrame').style.display='none';
+  video.hidden=true;
+  $('mainImage').hidden=false;
+  $('mainImage').style.display='block';
+}
 function setMediaSource(f){
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
@@ -526,16 +541,12 @@ function setMediaSource(f){
   video.removeAttribute('src');
   video.load();
   video.hidden=true;
-  $('videoFrame').hidden=true;
-
-  $('mainImage').hidden=false;
+  showArtworkFrame();
 
   if(isVideoFile(f)){
     activeMedia=video;
-    $('mainImage').hidden=true;
     video.src=objectUrl;
-    video.hidden=false;
-    $('videoFrame').hidden=false;
+    showVideoFrameOnly();
     video.load();
     updatePiPButton();
   }else{
@@ -850,8 +861,7 @@ async function loadCurrent(autoplay){
   if(!f){
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
     audio.pause(); audio.removeAttribute('src'); audio.load();
-    video.pause(); video.removeAttribute('src'); video.load(); video.hidden=true; $('videoFrame').hidden=true;
-    $('mainImage').hidden=false;
+    video.pause(); video.removeAttribute('src'); video.load(); video.hidden=true; showArtworkFrame();
     activeMedia=audio;
     $('now').textContent=t.name;
     $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
@@ -1001,7 +1011,7 @@ function renderPlaylist(){
       if(index>=playlist.length)index=Math.max(0,playlist.length-1);
       saveList();
       if(playlist.length)loadCurrent(false);
-      else {audio.pause();audio.removeAttribute('src');video.pause();video.removeAttribute('src');video.hidden=true;$('mainImage').hidden=false;activeMedia=audio;updateUI();}
+      else {audio.pause();audio.removeAttribute('src');video.pause();video.removeAttribute('src');showArtworkFrame();activeMedia=audio;updateUI();}
       renderPlaylist();
       renderStorageInfo();
     };
@@ -1013,8 +1023,8 @@ function renderPlaylist(){
 }
 
 
-// V3.49: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.49_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.51: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.51_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1359,7 +1369,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=349',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=351',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
