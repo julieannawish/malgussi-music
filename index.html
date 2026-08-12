@@ -164,7 +164,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','341');
+    u.searchParams.set('v','342');
     location.replace(u.toString());
   }
 })();
@@ -181,7 +181,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.41</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.42</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
@@ -303,23 +303,33 @@ function setupMediaSessionHandlers(){
 
 function refreshMediaSessionForPlayback(){
   setupMediaSessionHandlers();
-  updateMediaSessionMetadata();
+  updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
   setMediaSessionState('playing');
 }
 
-function updateMediaSessionMetadata(){
+function updateMediaSessionMetadata(artworkOverride){
   if(!mediaSessionSupported()) return;
   const t=playlist[index];
   if(!t) return;
+
+  const embedded=artworkOverride||artworkMap.get(t.id)||null;
+  const cover=artworkToDataUrl(embedded);
+  const fallback=new URL('./app-icon.png',location.href).href;
+
   try{
+    const artwork=[];
+    if(cover){
+      artwork.push({src:cover,sizes:'512x512',type:embedded.mime||'image/jpeg'});
+    }else{
+      artwork.push({src:fallback,sizes:'512x512',type:'image/png'});
+      artwork.push({src:new URL('./app-icon-192.png',location.href).href,sizes:'192x192',type:'image/png'});
+    }
+
     navigator.mediaSession.metadata=new MediaMetadata({
       title:t.name||'말구씨 음악',
       artist:'말구씨 음악 앱',
       album:'말구씨 음악 앱',
-      artwork:[
-        {src:new URL('./app-icon.png',location.href).href,sizes:'512x512',type:'image/png'},
-        {src:new URL('./app-icon-192.png',location.href).href,sizes:'192x192',type:'image/png'}
-      ]
+      artwork
     });
   }catch(e){}
 }
@@ -387,7 +397,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.41';
+const APP_VERSION='V3.42';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -577,6 +587,19 @@ async function extractArtwork(file){
   }
 }
 
+function artworkToDataUrl(art){
+  if(!art||!art.bytes)return null;
+  try{
+    let binary='';
+    const bytes=art.bytes instanceof Uint8Array?art.bytes:new Uint8Array(art.bytes);
+    const chunk=0x8000;
+    for(let i=0;i<bytes.length;i+=chunk){
+      binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));
+    }
+    return `data:${art.mime||'image/jpeg'};base64,${btoa(binary)}`;
+  }catch(e){return null;}
+}
+
 function artworkToUrl(art){
   if(!art||!art.bytes)return null;
   return URL.createObjectURL(new Blob([art.bytes],{type:art.mime||'image/jpeg'}));
@@ -719,36 +742,37 @@ async function loadCurrent(autoplay){
     $('mainImage').removeAttribute('data-url');
   }
 
+  let currentArtwork=null;
   if(!isVideoFile(f)){
-  if(artworkMap.has(t.id)){
-    const u=artworkToUrl(artworkMap.get(t.id));
-    if(u){
-      $('mainImage').src=u;
-      $('mainImage').dataset.url=u;
-      $('mainImage').alt='앨범 커버';
+    if(artworkMap.has(t.id)){
+      currentArtwork=artworkMap.get(t.id);
+      const u=artworkToUrl(currentArtwork);
+      if(u){
+        $('mainImage').src=u;
+        $('mainImage').dataset.url=u;
+        $('mainImage').alt='앨범 커버';
+      }else{
+        $('mainImage').src='dog_default.png';
+        $('mainImage').alt='말구씨 기본 강아지 이미지';
+      }
     }else{
       $('mainImage').src='dog_default.png';
       $('mainImage').alt='말구씨 기본 강아지 이미지';
-    }
-  }else{
-    $('mainImage').src='dog_default.png';
-    $('mainImage').alt='말구씨 기본 강아지 이미지';
-    // Extract only for the current song; the audio file itself is never stored.
-    extractArtwork(f).then(art=>{
+      // Read embedded artwork for both the in-app cover and iPhone Lock Screen.
+      currentArtwork=await extractArtwork(f);
+      if(currentArtwork) artworkMap.set(t.id,currentArtwork);
+
       if(playlist[index]?.id===t.id){
-        if(art) artworkMap.set(t.id,art);
         if($('mainImage').dataset.url){
           URL.revokeObjectURL($('mainImage').dataset.url);
           $('mainImage').removeAttribute('data-url');
         }
-        const u=art?artworkToUrl(art):null;
+        const u=currentArtwork?artworkToUrl(currentArtwork):null;
         $('mainImage').src=u||'dog_default.png';
         if(u)$('mainImage').dataset.url=u;
         $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
       }
-    });
-  }
-
+    }
   }else{
     $('mainImage').hidden=true;
   }
@@ -758,7 +782,7 @@ async function loadCurrent(autoplay){
     try{await activeMedia.play()}catch(e){}
   }
   $('status').textContent='';
-  updateMediaSessionMetadata();
+  updateMediaSessionMetadata(currentArtwork);
   setMediaSessionState(autoplay?'playing':'paused');
   updateUI();
 }
@@ -781,7 +805,7 @@ $('btnPlay').onclick=async()=>{
   }else{
     m.pause();setMediaSessionState('paused');
   }
-  updateMediaSessionMetadata();
+  updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
   updateUI();
 };
 $('btnPrev').onclick=()=>{if(!playlist.length)return;index=(index-1+playlist.length)%playlist.length;loadCurrent(true)};
@@ -863,8 +887,8 @@ function renderPlaylist(){
 }
 
 
-// V3.41: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.41_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.42: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.42_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1208,7 +1232,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=341',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=342',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
