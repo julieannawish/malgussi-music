@@ -201,7 +201,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','348');
+    u.searchParams.set('v','349');
     location.replace(u.toString());
   }
 })();
@@ -218,7 +218,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.48</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.49</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일  style="position:relative;">의 인덱스만 저장합니다.
@@ -484,7 +484,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.48';
+const APP_VERSION='V3.49';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -641,22 +641,20 @@ function parseMP4Artwork(buf){
         size=end-p;
       }
       if(size<head || p+size>end){
-        // A malformed/non-standard atom should not prevent searching
-        // the rest of the parent container.
         p+=8;
         continue;
       }
 
       const a=p+head,z=p+size;
 
-      // Quick direct covr atom search.
       if(typ==='covr'){
         let q=a;
         while(q+8<=z){
           let s=u32(q),t=type(q+4),hh=8;
           if(s===1){
             if(q+16>z)break;
-            s=u32(q+8)*4294967296+u32(q+12);hh=16;
+            s=u32(q+8)*4294967296+u32(q+12);
+            hh=16;
           }else if(s===0){
             s=z-q;
           }
@@ -664,9 +662,12 @@ function parseMP4Artwork(buf){
 
           if(t==='data'){
             const payload=b.slice(q+hh,q+s);
-            // data atom: 4-byte type/flags + 4-byte reserved + image bytes.
-            if(payload.length>8){
-              const img=payload.slice(8);
+            // QuickTime/iTunes 'data' atom:
+            // [version+flags:4][type:4][locale/reserved:4][image bytes...]
+            if(payload.length>12){
+              const dataType=u32From(payload,4);
+              const img=payload.slice(12);
+
               let mime='';
               if(img.length>=8 &&
                  img[0]===0x89&&img[1]===0x50&&img[2]===0x4e&&img[3]===0x47)
@@ -674,14 +675,18 @@ function parseMP4Artwork(buf){
               else if(img.length>=3 &&
                       img[0]===0xff&&img[1]===0xd8&&img[2]===0xff)
                 mime='image/jpeg';
-              if(mime)return {mime,bytes:img};
+              else if(dataType===13)
+                mime='image/jpeg';
+              else if(dataType===14)
+                mime='image/png';
+
+              if(mime && img.length>20)return {mime,bytes:img};
             }
           }
           q+=s;
         }
       }
 
-      // Container atoms. meta has a 4-byte FullBox version/flags field.
       if(['moov','udta','meta','ilst','trak','mdia','minf','stbl'].includes(typ)){
         const childStart=typ==='meta'?a+4:a;
         if(childStart<z){
@@ -693,9 +698,13 @@ function parseMP4Artwork(buf){
     }
     return null;
   }
+
+  function u32From(arr,p){
+    return ((arr[p]<<24)|(arr[p+1]<<16)|(arr[p+2]<<8)|arr[p+3])>>>0;
+  }
+
   return scan(0,b.length);
 }
-
 async function extractArtwork(file){
   try{
     const name=(file.name||'').toLowerCase();
@@ -888,7 +897,7 @@ async function loadCurrent(autoplay){
 
   // Media Session에는 embedded artwork를 Blob URL로 전달한다.
   // 이렇게 하면 MP4/MP3 모두 iPhone 잠금화면에서 동일한 artwork 규칙을 사용한다.
-  if(currentArtwork){
+  if(currentArtwork && !currentArtwork.blobUrl){
     const mediaUrl=artworkToUrl(currentArtwork);
     currentArtwork={...currentArtwork,blobUrl:mediaUrl};
     artworkMap.set(t.id,currentArtwork);
@@ -1004,8 +1013,8 @@ function renderPlaylist(){
 }
 
 
-// V3.48: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.48_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.49: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.49_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1350,7 +1359,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=348',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=349',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
