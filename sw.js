@@ -1,4 +1,4 @@
-const CACHE='malgussi-v3-44-pip-ui';
+const CACHE='malgussi-v3-45-airplay-pip';
 const CORE=['./','./index.html','./manifest.webmanifest','./dog_default.png','./app-icon.png','./app-icon-192.png'];
 
 self.addEventListener('message', event=>{

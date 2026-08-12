@@ -180,6 +180,32 @@ input[type=file]{display:none}
 .video-pip-btn.is-available{display:flex}
 .video-pip-btn:active{transform:scale(.96)}
 
+
+.video-pip-btn,.video-airplay-btn{
+  position:absolute;
+  top:12px;
+  z-index:20;
+  width:42px;
+  height:42px;
+  min-width:42px;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:rgba(0,0,0,.48);
+  color:#fff;
+  font-size:25px;
+  line-height:1;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.22);
+  cursor:pointer;
+}
+.video-pip-btn{right:62px}
+.video-airplay-btn{right:12px;font-size:24px}
+.video-pip-btn.is-available,.video-airplay-btn.is-available{display:flex}
+.video-pip-btn:active,.video-airplay-btn:active{transform:scale(.96)}
+
 </style>
 
 <script data-build-guard>
@@ -189,7 +215,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','344');
+    u.searchParams.set('v','345');
     location.replace(u.toString());
   }
 })();
@@ -206,7 +232,7 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.44</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.45</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
       파일 내용은 읽지 않고 파일명·크기·수정일  style="position:relative;">의 인덱스만 저장합니다.
@@ -229,6 +255,8 @@ input[type=file]{display:none}
       <button id="btnPlay" class="play"><span class="icon">▶</span><span class="label">재생</span></button>
 <button id="btnPiP" class="video-pip-btn" type="button"
   title="작은 화면으로 전환" aria-label="작은 화면으로 전환" aria-hidden="true">↗</button>
+<button id="btnAirPlay" class="video-airplay-btn" type="button"
+  title="TV로 보내기 (AirPlay)" aria-label="TV로 보내기 (AirPlay)" aria-hidden="true">⌁</button>
       <button id="btnNext" class="prevnext"><span class="icon">⏭</span><span class="label">다음</span></button>
     </div>
 
@@ -258,6 +286,27 @@ input[type=file]{display:none}
 // iPhone background / Lock Screen media controls.
 // The browser exposes these through the Media Session API when supported.
 
+function airPlaySupported(){
+  if(!video) return false;
+  return typeof video.webkitShowPlaybackTargetPicker === 'function';
+}
+function updateAirPlayButton(){
+  const b=$('btnAirPlay');
+  if(!b)return;
+  const available=airPlaySupported() && activeMedia===video;
+  b.classList.toggle('is-available',available);
+  b.disabled=!available;
+  b.setAttribute('aria-hidden',available?'false':'true');
+}
+function showAirPlayPicker(){
+  if(!airPlaySupported())return;
+  try{
+    video.webkitShowPlaybackTargetPicker();
+  }catch(e){
+    $('status').textContent='이 환경에서는 AirPlay를 사용할 수 없습니다.';
+  }
+}
+
 function pipSupported(){
   // iOS standalone Home Screen PWA may expose video PiP APIs inconsistently.
   // Only advertise the button when the current video element can actually
@@ -279,6 +328,7 @@ function updatePiPButton(){
   b.classList.toggle('is-available',available);
   b.disabled=!available;
   b.setAttribute('aria-hidden',available?'false':'true');
+  updateAirPlayButton();
 }
 async function togglePiP(){
   if(activeMedia!==video)return;
@@ -479,11 +529,20 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.44';
+const APP_VERSION='V3.45';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
 const video=$('mainVideo');
+if(video){
+  video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{
+    updateAirPlayButton();
+    if(video.webkitCurrentPlaybackTargetIsWireless){
+      $('status').textContent='AirPlay로 영상을 전송 중입니다.';
+    }
+  });
+}
+
 let activeMedia=audio;
 
 let playlist=[];      // index records only: {id,name,size,lastModified,type}
@@ -970,8 +1029,8 @@ function renderPlaylist(){
 }
 
 
-// V3.44: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.44_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.45: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.45_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1300,6 +1359,7 @@ function updateUI(){
   updateRepeatButton();
 }
 if($('btnPiP'))$('btnPiP').onclick=togglePiP;
+$('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
 loadIndex();
 
@@ -1315,7 +1375,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=344',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=345',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
