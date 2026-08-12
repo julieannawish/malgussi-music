@@ -155,6 +155,31 @@ input[type=file]{display:none}
 #btnPiP{display:none;min-height:58px;border:1px solid #9dbdff;border-radius:16px;background:#eef5ff;color:#2759a5;font-weight:700;padding:10px 16px}
 #btnPiP.is-available{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 #btnPiP:disabled{opacity:.45}
+
+.video-pip-btn{
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:20;
+  width:42px;
+  height:42px;
+  min-width:42px;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:rgba(0,0,0,.48);
+  color:#fff;
+  font-size:26px;
+  line-height:1;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.22);
+  cursor:pointer;
+}
+.video-pip-btn.is-available{display:flex}
+.video-pip-btn:active{transform:scale(.96)}
+
 </style>
 
 <script data-build-guard>
@@ -164,7 +189,7 @@ input[type=file]{display:none}
   if(meta && meta.content===expected) return;
   var u=new URL(location.href);
   if(u.searchParams.get('v')!=='334'){
-    u.searchParams.set('v','342');
+    u.searchParams.set('v','344');
     location.replace(u.toString());
   }
 })();
@@ -181,10 +206,10 @@ input[type=file]{display:none}
   <div id="playlistList" class="playlist-list"></div>
   <button id="btnPlaylistAdd" class="playlist-add">＋ 음악 추가</button>
   <div class="storage-box">
-    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.42</span></div>
+    <div class="storage-title">📇 인덱스 방식 <span style="font-size:12px;font-weight:700;opacity:.65">V3.44</span></div>
     <div id="storageInfo" class="storage-info">
       음악 파일 자체는 앱에 복사하지 않습니다.<br>
-      파일 내용은 읽지 않고 파일명·크기·수정일 등의 인덱스만 저장합니다.
+      파일 내용은 읽지 않고 파일명·크기·수정일  style="position:relative;">의 인덱스만 저장합니다.
     </div>
     <button id="btnRelink" class="playlist-add" style="margin-top:10px">📁 음악 폴더 지정</button>
     <div class="relink-help">음악 폴더를 지정하면 음악과 MP4를 자동으로 연결하고, 없는 곡은 자동으로 정리합니다.<span id="folder-only-hint" class="folder-only-hint">파일은 앱에 복사하지 않습니다.</span></div>
@@ -202,7 +227,8 @@ input[type=file]{display:none}
     <div class="controls">
       <button id="btnPrev" class="prevnext"><span class="icon">⏮</span><span class="label">이전</span></button>
       <button id="btnPlay" class="play"><span class="icon">▶</span><span class="label">재생</span></button>
-<button id="btnPiP" class="secondary-btn" type="button" title="작은 화면">▣<span>작은 화면</span></button>
+<button id="btnPiP" class="video-pip-btn" type="button"
+  title="작은 화면으로 전환" aria-label="작은 화면으로 전환" aria-hidden="true">↗</button>
       <button id="btnNext" class="prevnext"><span class="icon">⏭</span><span class="label">다음</span></button>
     </div>
 
@@ -219,7 +245,7 @@ input[type=file]{display:none}
     <input id="files" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <div id="status" class="status"></div>
-    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다른 앱으로 전환하거나 화면을 잠가도 음악 재생을 계속할 수 있습니다.<br>잠금화면/제어센터에서 이전·재생·다음으로 조작할 수 있습니다.<br>MP4는 [작은 화면] 버튼을 지원하는 환경에서 다른 앱 위의 작은 화면으로 전환할 수 있습니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
+    <div class="help">음악 파일은 앱에 복사하지 않습니다.<br>앱을 다른 앱으로 전환하거나 화면을 잠가도 음악 재생을 계속할 수 있습니다.<br>잠금화면/제어센터에서 이전·재생·다음으로 조작할 수 있습니다.<br>MP4는 iPhone이 작은 화면(PiP)을 실제로 지원하는 환경에서만 [작은 화면] 버튼이 나타납니다.<br>앱을 다시 열면 음악 폴더를 한 번 선택해 원본 음악을 자동으로 다시 연결할 수 있습니다.</div>
   </div>
 </div>
 
@@ -233,12 +259,18 @@ input[type=file]{display:none}
 // The browser exposes these through the Media Session API when supported.
 
 function pipSupported(){
-  return !!(video &&
-    ((typeof video.webkitSupportsPresentationMode==='function' &&
-      video.webkitSupportsPresentationMode('picture-in-picture') &&
-      typeof video.webkitSetPresentationMode==='function') ||
-     (typeof video.requestPictureInPicture==='function' &&
-      document.pictureInPictureEnabled)));
+  // iOS standalone Home Screen PWA may expose video PiP APIs inconsistently.
+  // Only advertise the button when the current video element can actually
+  // enter a supported presentation mode.
+  if(!video)return false;
+  try{
+    if(typeof video.webkitSupportsPresentationMode==='function' &&
+       typeof video.webkitSetPresentationMode==='function'){
+      return !!video.webkitSupportsPresentationMode('picture-in-picture');
+    }
+    return !!(document.pictureInPictureEnabled &&
+               typeof video.requestPictureInPicture==='function');
+  }catch(e){return false;}
 }
 function updatePiPButton(){
   const b=$('btnPiP');
@@ -246,9 +278,15 @@ function updatePiPButton(){
   const available=pipSupported() && activeMedia===video;
   b.classList.toggle('is-available',available);
   b.disabled=!available;
+  b.setAttribute('aria-hidden',available?'false':'true');
 }
 async function togglePiP(){
   if(activeMedia!==video)return;
+  if(!pipSupported()){
+    $('status').textContent='이 아이폰 홈 화면 앱에서는 작은 화면(PiP)을 지원하지 않습니다.';
+    updatePiPButton();
+    return;
+  }
   try{
     if(typeof video.webkitSupportsPresentationMode==='function' &&
        video.webkitSupportsPresentationMode('picture-in-picture') &&
@@ -263,7 +301,8 @@ async function togglePiP(){
       await video.requestPictureInPicture();
     }
   }catch(e){
-    $('status').textContent='현재 아이폰 홈 화면 앱에서는 작은 화면 기능을 사용할 수 없습니다. Safari에서 열면 지원될 수 있습니다.';
+    $('status').textContent='이 환경에서는 작은 화면(PiP)을 시작할 수 없습니다.';
+    updatePiPButton();
   }
 }
 
@@ -307,13 +346,56 @@ function refreshMediaSessionForPlayback(){
   setMediaSessionState('playing');
 }
 
+async function extractVideoArtwork(f){
+  try{
+    const src=URL.createObjectURL(f);
+    const v=document.createElement('video');
+    v.muted=true;
+    v.playsInline=true;
+    v.preload='metadata';
+    v.src=src;
+
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('video metadata timeout')),5000);
+      v.onloadedmetadata=()=>{clearTimeout(timer);resolve()};
+      v.onerror=()=>{clearTimeout(timer);reject(new Error('video metadata error'))};
+    });
+
+    if(!isFinite(v.duration) || v.duration<=0) throw new Error('invalid video duration');
+
+    const target=Math.min(0.2,Math.max(0.01,v.duration/20));
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('video seek timeout')),5000);
+      v.onseeked=()=>{clearTimeout(timer);resolve()};
+      v.onerror=()=>{clearTimeout(timer);reject(new Error('video seek error'))};
+      try{v.currentTime=target}catch(e){clearTimeout(timer);reject(e)}
+    });
+
+    const max=512;
+    const scale=Math.min(1,max/Math.max(v.videoWidth||1,v.videoHeight||1));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round((v.videoWidth||512)*scale));
+    canvas.height=Math.max(1,Math.round((v.videoHeight||512)*scale));
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(v,0,0,canvas.width,canvas.height);
+    const data=canvas.toDataURL('image/jpeg',0.82);
+
+    v.removeAttribute('src');
+    v.load();
+    URL.revokeObjectURL(src);
+    return {dataUrl:data,mime:'image/jpeg'};
+  }catch(e){
+    return null;
+  }
+}
+
 function updateMediaSessionMetadata(artworkOverride){
   if(!mediaSessionSupported()) return;
   const t=playlist[index];
   if(!t) return;
 
   const embedded=artworkOverride||artworkMap.get(t.id)||null;
-  const cover=artworkToDataUrl(embedded);
+  const cover=embedded?.dataUrl || artworkToDataUrl(embedded);
   const fallback=new URL('./app-icon.png',location.href).href;
 
   try{
@@ -397,7 +479,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.42';
+const APP_VERSION='V3.44';
 const KEY='playlist_index_v321'; // PLAYLIST_KEY_COMPAT: keep for existing user data; app version is independent
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -758,10 +840,8 @@ async function loadCurrent(autoplay){
     }else{
       $('mainImage').src='dog_default.png';
       $('mainImage').alt='말구씨 기본 강아지 이미지';
-      // Read embedded artwork for both the in-app cover and iPhone Lock Screen.
       currentArtwork=await extractArtwork(f);
       if(currentArtwork) artworkMap.set(t.id,currentArtwork);
-
       if(playlist[index]?.id===t.id){
         if($('mainImage').dataset.url){
           URL.revokeObjectURL($('mainImage').dataset.url);
@@ -775,6 +855,9 @@ async function loadCurrent(autoplay){
     }
   }else{
     $('mainImage').hidden=true;
+    // MP4 has no ID3-style album artwork. Create a thumbnail from the
+    // actual video frame for the Lock Screen Now Playing artwork.
+    currentArtwork=await extractVideoArtwork(f);
   }
 
   activeMedia.load();
@@ -887,8 +970,8 @@ function renderPlaylist(){
 }
 
 
-// V3.42: ONLY an explicit folder scan may remove missing playlist index records.
-// V3.42_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
+// V3.44: ONLY an explicit folder scan may remove missing playlist index records.
+// V3.44_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
@@ -1232,7 +1315,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=342',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=344',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
