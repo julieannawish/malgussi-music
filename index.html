@@ -262,7 +262,7 @@ input[type=file]{display:none}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.64</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.65</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -503,6 +503,47 @@ async function loadMusicDirectoryHandle(){
     });
   }catch(e){ return null; }
 }
+
+// V3.65: iOS/PWA에서는 선택한 폴더의 File 객체를 재실행 후 다시 얻을 수 없을 수 있으므로
+// 한 번 지정한 기본 미디어의 기존 파일을 IndexedDB에 보존한다.
+const MEDIA_CACHE_DB='malgussi_media_cache_v1';
+const MEDIA_CACHE_STORE='files';
+async function openMediaCacheDB(){
+  return await new Promise((resolve,reject)=>{
+    const req=indexedDB.open(MEDIA_CACHE_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(MEDIA_CACHE_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function cacheMediaFiles(files){
+  try{
+    const arr=Array.from(files||[]).filter(isMediaFile);
+    const db=await openMediaCacheDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(MEDIA_CACHE_STORE,'readwrite');
+      const st=tx.objectStore(MEDIA_CACHE_STORE);
+      st.clear();
+      for(const f of arr){
+        const key=[String(f.name||''),Number(f.size||0),Number(f.lastModified||0),f.webkitRelativePath||f.name||''].join('|');
+        st.put({blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name},key);
+      }
+      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    });
+    return true;
+  }catch(e){ console.warn('cacheMediaFiles',e); return false; }
+}
+async function loadCachedMediaFiles(){
+  try{
+    const db=await openMediaCacheDB();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(MEDIA_CACHE_STORE,'readonly');
+      const req=tx.objectStore(MEDIA_CACHE_STORE).getAll();
+      req.onsuccess=()=>resolve((req.result||[]).map(x=>new File([x.blob],x.name,{type:x.type||'',lastModified:Number(x.lastModified)||Date.now()})));
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){ return []; }
+}
 async function canUseSavedMusicDirectory(){
   const h=await loadMusicDirectoryHandle();
   if(!h || typeof h.queryPermission!=='function') return false;
@@ -511,7 +552,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.64';
+const APP_VERSION='V3.65';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1582,9 +1623,9 @@ let mediaFiles=[];
   document.querySelectorAll('[data-v352-mode]').forEach(b=>b.onclick=()=>{vmode=b.dataset.v352Mode;updateMode()});
   function loadFolderMeta2(){try{const m=JSON.parse(localStorage.getItem(FM)||localStorage.getItem('malgussi_recent_music_folder_v1')||'null');const txt=m?(m.name+' · '+(m.count||m.fileCount||0)+'개 파일'):'아직 지정하지 않았습니다.';q('v352FolderPath').textContent=txt;q('v352MediaFolder').textContent=txt}catch(e){}}
   function saveFolderMeta2(files){const a=[...files];const p=a.map(f=>f.webkitRelativePath||'').find(Boolean);const name=p?p.split('/')[0]:'기본 미디어 폴더';localStorage.setItem(FM,JSON.stringify({name,count:a.length,at:Date.now()}));loadFolderMeta2()}
-  async function chooseFolder(){if('showDirectoryPicker'in window){try{const h=await window.showDirectoryPicker({mode:'read'});await saveMusicDirectoryHandle(h);const fs=[];for await(const e of h.values())if(e.kind==='file'){const f=await e.getFile();if(isMediaFile(f))fs.push(f)}saveFolderMeta2(fs);relinkFromFolder(fs);return}catch(e){}}q('folderFiles').click()}
+  async function chooseFolder(){if('showDirectoryPicker'in window){try{const h=await window.showDirectoryPicker({mode:'read'});await saveMusicDirectoryHandle(h);const fs=[];for await(const e of h.values())if(e.kind==='file'){const f=await e.getFile();if(isMediaFile(f))fs.push(f)}saveFolderMeta2(fs);await cacheMediaFiles(fs);relinkFromFolder(fs);return}catch(e){}}q('folderFiles').click()}
   q('v352ChooseFolder').onclick=chooseFolder;
-  q('folderFiles').addEventListener('change',e=>{if(e.target.files?.length){mediaFiles=Array.from(e.target.files).filter(isMediaFile);saveFolderMeta2(e.target.files);relinkFromFolder(e.target.files);renderMedia()}e.target.value=''});
+  q('folderFiles').addEventListener('change',async e=>{if(e.target.files?.length){mediaFiles=Array.from(e.target.files).filter(isMediaFile);saveFolderMeta2(e.target.files);await cacheMediaFiles(mediaFiles);await relinkFromFolder(e.target.files);renderMedia()}e.target.value=''});
   async function loadMediaForPicker(allowPermissionRequest=false){
     try{
       if(mediaFiles.length){renderMedia();return true;}
@@ -1611,6 +1652,10 @@ let mediaFiles=[];
         }
       }
     }catch(e){console.warn('loadMediaForPicker',e)}
+    // Saved directory handles are not reliably restorable in iOS/PWA.
+    // Fall back to the persistent copy captured when the folder was selected.
+    const cached=await loadCachedMediaFiles();
+    if(cached.length){mediaFiles=cached;renderMedia();return true;}
     renderMedia();
     return false;
   }
@@ -1692,6 +1737,7 @@ let mediaFiles=[];
       n++;
     }
     saveList();
+    await cacheMediaFiles(mediaFiles);
     msel.clear();
     renderMedia();renderPL();renderStorageInfo();
     if(wasEmpty && playlist.length){
@@ -1743,7 +1789,10 @@ let mediaFiles=[];
         for await(const entry of h.values()){
           if(entry.kind==='file'){const f=await entry.getFile();if(isMediaFile(f))files.push(f);}
         }
-        if(files.length) await relinkFromFolder(files);
+        if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files);}
+      }else{
+        const cached=await loadCachedMediaFiles();
+        if(cached.length) await relinkFromFolder(cached);
       }
       if(playlist.length) await loadCurrent(false);
       else updateUI();
