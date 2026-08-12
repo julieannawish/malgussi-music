@@ -242,6 +242,7 @@ input[type=file]{display:none}
 
     <input id="files" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
     <input id="folderFiles" type="file" webkitdirectory directory multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga">
+    <input id="mediaFilesPicker" type="file" multiple accept="audio/*,video/mp4,.mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.oga" style="display:none">
     <div id="status" class="status"></div>
   </div>
 </div>
@@ -511,7 +512,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.60';
+const APP_VERSION='V3.61';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1478,17 +1479,17 @@ let mediaFiles=[];
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
   q('v352OpenMedia').onclick=()=>{
-    // IMPORTANT: keep the picker call inside the original tap/click event.
-    // Awaiting loadMediaForPicker() first can consume iOS's transient user activation.
+    // The iOS Files picker treats a webkitdirectory input as a FOLDER picker,
+    // which makes individual files appear disabled.  The Add action therefore
+    // uses a normal multi-file input on iPhone/Safari when the in-memory folder
+    // scan is not available. The click stays directly inside the tap handler.
     open('v352Media');
     if(mediaFiles.length){ renderMedia(); return; }
     q('status').textContent='기본 미디어 폴더에서 추가할 파일을 선택해 주세요.';
     if('showDirectoryPicker' in window){
-      // chooseFolder() calls showDirectoryPicker() before its first await.
       chooseFolder();
     }else{
-      // iPhone/Safari fallback: native folder/file picker must be triggered synchronously.
-      q('folderFiles').click();
+      q('mediaFilesPicker').click();
     }
   }; q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
@@ -1500,6 +1501,14 @@ let mediaFiles=[];
   async function chooseFolder(){if('showDirectoryPicker'in window){try{const h=await window.showDirectoryPicker({mode:'read'});await saveMusicDirectoryHandle(h);const fs=[];for await(const e of h.values())if(e.kind==='file'){const f=await e.getFile();if(isMediaFile(f))fs.push(f)}saveFolderMeta2(fs);relinkFromFolder(fs);return}catch(e){}}q('folderFiles').click()}
   q('v352ChooseFolder').onclick=chooseFolder;
   q('folderFiles').addEventListener('change',e=>{if(e.target.files?.length){mediaFiles=Array.from(e.target.files).filter(isMediaFile);saveFolderMeta2(e.target.files);relinkFromFolder(e.target.files);renderMedia()}e.target.value=''});
+  q('mediaFilesPicker').addEventListener('change',e=>{
+    if(e.target.files?.length){
+      mediaFiles=Array.from(e.target.files).filter(isMediaFile);
+      renderMedia();
+      q('status').textContent=`${mediaFiles.length}개 파일을 불러왔습니다. 원하는 파일을 선택해 주세요.`;
+    }
+    e.target.value='';
+  });
   async function loadMediaForPicker(){
     try{
       if(mediaFiles.length){renderMedia();return true;}
