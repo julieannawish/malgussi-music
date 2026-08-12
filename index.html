@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V362">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V363">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -262,7 +262,7 @@ input[type=file]{display:none}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.62</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.63</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -420,7 +420,7 @@ function updateMediaSessionMetadata(artworkOverride){
 
   const embedded=artworkOverride||artworkMap.get(t.id)||null;
   const cover=embedded?.blobUrl || artworkToDataUrl(embedded);
-  const fallback=(window.v352ProfileImage||new URL('./profile_default.png',location.href));
+  const fallback=new URL('./app-icon-192.png',location.href);
 
   try{
     const artwork=[];
@@ -511,7 +511,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.62';
+const APP_VERSION='V3.63';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -724,8 +724,8 @@ function parseMP4Artwork(buf){
             // QuickTime/iTunes 'data' atom:
             // [version+flags:4][type:4][locale/reserved:4][image bytes...]
             if(payload.length>12){
-              const dataType=u32From(payload,4);
-              const img=payload.slice(12);
+              const dataType=u32From(payload,0);
+              const img=payload.slice(8);
 
               let mime='';
               if(img.length>=8 &&
@@ -966,10 +966,17 @@ async function loadCurrent(autoplay){
     if(currentArtwork) artworkMap.set(t.id,currentArtwork);
   }
 
+  if(isVideoFile(f) && !currentArtwork){
+    const frame=await videoFirstFrame(f);
+    if(frame){
+      try{const bin=atob(frame.split(',')[1]||'');const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);currentArtwork={mime:'image/jpeg',bytes};cacheArtworkForTrack(t.id,currentArtwork);artworkMap.set(t.id,currentArtwork);}catch(e){}
+    }
+  }
+
   if(!isVideoFile(f)){
     const u=currentArtwork?artworkToUrl(currentArtwork):null;
-    $('mainImage').src=u||((window.v352ProfileImage)||'profile_default.png');
-    $('mainImage').alt=u?'앨범 커버':'말구씨 기본 강아지 이미지';
+    $('mainImage').src=u||'app-icon-192.png';
+    $('mainImage').alt=u?'앨범 커버':'말구씨 앱 아이콘';
     if(u)$('mainImage').dataset.url=u;
   }else{
     $('mainImage').hidden=true;
@@ -1200,7 +1207,7 @@ function clearAllIndex(){
   $('count').textContent='아직 음악 또는 동영상이 없습니다';
   if($('mainImage').dataset.url)URL.revokeObjectURL($('mainImage').dataset.url);
   $('mainImage').removeAttribute('data-url');
-  $('mainImage').src=(window.v352ProfileImage||'profile_default.png');
+  $('mainImage').src='dog_default.png';
   renderPlaylist();
   renderStorageInfo();
   updateUI();
@@ -1463,7 +1470,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=362',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=363',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1490,7 +1497,7 @@ document.addEventListener('click', function(e){
 </script>
 
 <script>
-/* V3.62 stable playlist/file picker + default screen fixes */
+/* V3.63 stable playlist/file picker + artwork fixes */
 let mediaFiles=[];
 (function(){
   const K='malgussi_profile_v352', MK='malgussi_mode_v352', FM='malgussi_folder_meta_v352';
@@ -1512,12 +1519,13 @@ let mediaFiles=[];
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
   q('v352OpenMedia').onclick=()=>{
-    // 재생목록의 '추가'는 폴더 지정이 아니라 '파일 선택'이다.
-    // iPhone Files에서 개별 MP3/MP4를 선택할 수 있도록 일반 multiple picker를
-    // 사용자 탭 안에서 즉시 호출한다. 폴더 지정은 설정 화면에서만 한다.
-    open('v352Media');
-    if(mediaFiles.length){ renderMedia(); return; }
+    // 매번 새 파일 선택기를 연다. 이전 선택 상태를 절대 재사용하지 않는다.
+    msel.clear();
+    mediaFiles=[];
+    q('files').value='';
     q('status').textContent='추가할 MP3 또는 MP4 파일을 선택해 주세요.';
+    open('v352Media');
+    // open() 이후에도 같은 사용자 탭 이벤트 안에서 즉시 호출한다.
     q('files').click();
   }; q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
@@ -1555,6 +1563,44 @@ let mediaFiles=[];
     renderMedia();
     return false;
   }
+  async function mediaArtwork(f){
+    const key=idForFile(f);
+    const cached=getCachedArtwork(key);
+    if(cached)return cached;
+    let art=null;
+    try{art=await extractArtwork(f);}catch(e){art=null;}
+    if(art)cacheArtworkForTrack(key,art);
+    return art;
+  }
+  async function videoFirstFrame(f){
+    try{
+      const url=URL.createObjectURL(f);
+      const v=document.createElement('video');
+      v.muted=true; v.playsInline=true; v.preload='metadata'; v.src=url;
+      await new Promise((resolve,reject)=>{v.onloadeddata=resolve;v.onerror=reject;});
+      const w=Math.max(1,Math.min(640,v.videoWidth||640));
+      const h=Math.max(1,Math.round(w*(v.videoHeight||360)/(v.videoWidth||640)));
+      v.currentTime=Math.min(0.1,Number(v.duration)||0);
+      await new Promise(resolve=>{v.onseeked=resolve;setTimeout(resolve,700);});
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(v,0,0,w,h);
+      URL.revokeObjectURL(url);
+      return c.toDataURL('image/jpeg',0.82);
+    }catch(e){return null;}
+  }
+  async function setMediaThumb(img,f){
+    const art=await mediaArtwork(f);
+    if(art){
+      const u=artworkToUrl(art); if(u){img.src=u; img.dataset.url=u; return;}
+    }
+    if(isVideoFile(f)){
+      const frame=await videoFirstFrame(f);
+      if(frame){img.src=frame;return;}
+      img.src='dog_default.png';
+      return;
+    }
+    img.src='app-icon-192.png';
+  }
   function fileKey(f){
     return [exactFileName(f.name),Number(f.size||0),Number(f.lastModified||0),f.webkitRelativePath||''].join('|');
   }
@@ -1566,9 +1612,45 @@ let mediaFiles=[];
     return sameName && sameSize && samePath;
   }
   function idForFile(f){return fileKey(f);}
-  function renderMedia(){const box=q('v352MediaList');box.innerHTML='';const list=(typeof mediaFiles!=='undefined'?mediaFiles:[]).filter(f=>mfilter==='all'||(mfilter==='video'?isVideoFile(f):isAudioFile(f)));if(!list.length){box.innerHTML='<div class="v352-empty">기본 미디어 폴더가 비어 있거나 아직 연결되지 않았습니다.<br>설정에서 기본 미디어 폴더를 지정하세요.</div>';return}for(const f of list){const key=idForFile(f),on=msel.has(key),exists=playlist.some(t=>fileEquivalent(t,f));const row=document.createElement('div');row.className='v352-row';const c=document.createElement('button');c.className='v352-check'+(on?' on':'');c.textContent=on?'✓':'';c.onclick=()=>{msel.has(key)?msel.delete(key):msel.add(key);renderMedia()};const im=document.createElement('img');im.className='v352-thumb';im.src=window.v352ProfileImage||'profile_default.png';const info=document.createElement('div');info.className='v352-info';const nm=document.createElement('div');nm.className='v352-name';nm.textContent=f.name;const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(f)?'MP4':'음악')+' · '+formatBytes(f.size)+(exists?' · 재생목록에 있음':'');info.append(nm,su);row.append(c,im,info);box.append(row)}}
+  function renderMedia(){
+    const box=q('v352MediaList');box.innerHTML='';
+    const list=(typeof mediaFiles!=='undefined'?mediaFiles:[]).filter(f=>mfilter==='all'||(mfilter==='video'?isVideoFile(f):isAudioFile(f)));
+    if(!list.length){box.innerHTML='<div class="v352-empty">기본 미디어 폴더가 비어 있거나 아직 연결되지 않았습니다.<br>설정에서 기본 미디어 폴더를 지정하세요.</div>';return}
+    for(const f of list){
+      const key=idForFile(f),on=msel.has(key),exists=playlist.some(t=>fileEquivalent(t,f));
+      const row=document.createElement('div');row.className='v352-row';
+      const c=document.createElement('button');c.className='v352-check'+(on?' on':'');c.textContent=on?'✓':'';
+      c.onclick=e=>{e.stopPropagation();msel.has(key)?msel.delete(key):msel.add(key);renderMedia()};
+      const im=document.createElement('img');im.className='v352-thumb';im.src=isVideoFile(f)?'dog_default.png':'app-icon-192.png';
+      const info=document.createElement('div');info.className='v352-info';
+      const nm=document.createElement('div');nm.className='v352-name';nm.textContent=f.name;
+      const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(f)?'MP4':'음악')+' · '+formatBytes(f.size)+(exists?' · 재생목록에 있음':'');
+      info.append(nm,su);row.append(c,im,info);box.append(row);
+      setMediaThumb(im,f);
+    }
+  }
   document.querySelectorAll('[data-v352-filter]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-v352-filter]').forEach(x=>x.classList.remove('on'));b.classList.add('on');mfilter=b.dataset.v352Filter;renderMedia()});
-  q('v352AddSelected').onclick=()=>{let n=0;for(const f of (typeof mediaFiles!=='undefined'?mediaFiles:[])){if(!msel.has(idForFile(f))||playlist.some(t=>fileEquivalent(t,f)))continue;const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});fileMap.set(id,f);n++}saveList();msel.clear();renderMedia();renderPL();renderStorageInfo();updateUI();toast2(n+'곡을 재생목록에 추가했습니다.')};
+  q('v352AddSelected').onclick=async()=>{
+    const wasEmpty=playlist.length===0;
+    let n=0;
+    for(const f of (typeof mediaFiles!=='undefined'?mediaFiles:[])){
+      if(!msel.has(idForFile(f))||playlist.some(t=>fileEquivalent(t,f)))continue;
+      const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
+      playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
+      fileMap.set(id,f);
+      n++;
+    }
+    saveList();
+    msel.clear();
+    renderMedia();renderPL();renderStorageInfo();
+    if(wasEmpty && playlist.length){
+      index=0;
+      await loadCurrent(false);
+    }else{
+      updateUI();
+    }
+    toast2(n+'곡을 재생목록에 추가했습니다.');
+  };
   function toast2(m){q('status').textContent=m;setTimeout(()=>{if(q('status').textContent===m)q('status').textContent=''},1800)}
   function renderPL(){const box=q('v352PlaylistList');box.innerHTML='';if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 버튼에서 기본 미디어 폴더의 파일을 선택해 추가하세요.</div>';updatePF();return}playlist.forEach((t,i)=>{const row=document.createElement('div');row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');row.dataset.i=i;const c=document.createElement('button');c.className='v352-check'+(psel.has(t.id)?' on':'');c.textContent=psel.has(t.id)?'✓':'';c.onclick=e=>{e.stopPropagation();toggleP(t.id)};const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');const info=document.createElement('div');info.className='v352-info';const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');info.append(nm,su);const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';row.append(c,n,info,d);row.onclick=()=>{if(psel.size)return;index=i;loadCurrent(true);close('v352Playlist')};setupSlide(row);setupMove(row,d);box.append(row)});updatePF()}
   function toggleP(id){psel.has(id)?psel.delete(id):psel.add(id);renderPL()}
