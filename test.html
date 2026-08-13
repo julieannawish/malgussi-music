@@ -311,15 +311,6 @@ html,body{width:100%;overflow:hidden;}
 #v352Playlist .v352-pl-row{touch-action:pan-y;}
 #v352Playlist .v352-drag{touch-action:none;cursor:grab;}
 @media(max-width:390px){#v352Playlist .v352-pl-footer{gap:5px}#v352Playlist .pl-actions{gap:5px}#v352Playlist .pl-icon-btn small{font-size:10px}}
-
-/* V3.72: single media surface and current-track emphasis */
-#mediaStage{position:relative;isolation:isolate;}
-#mediaStage > .art,#mediaStage > .video-frame{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;}
-#mediaStage > .art{object-fit:contain;}
-#mediaStage > .video-frame{object-fit:contain;}
-#mediaStage > .video-frame .video-player{width:100%;height:100%;object-fit:contain;}
-#v352Playlist .v352-pl-row.current-track{border:2px solid #2457A6;background:#F4F8FF;box-shadow:inset 4px 0 0 #2457A6;}
-#v352Playlist .v352-pl-row.current-track .v352-num{color:#2457A6;}
 </style>
 
 
@@ -2065,5 +2056,14 @@ let mediaFiles=[];
   bootMalgussi();
 })();
 </script>
-</body>
+<script>
+setTimeout(()=>{
+  const key='playlist_index_v321';
+  if(!sessionStorage.getItem('seeded')){
+    const arr=[]; for(let i=1;i<=30;i++) arr.push({id:'t'+i,name:(i===17?'현재 재생 중인 곡.mp3':'테스트곡_'+i+'.mp3'),size:1000+i,lastModified:100+i,type:'audio/mpeg',path:'테스트곡_'+i+'.mp3'});
+    localStorage.setItem(key,JSON.stringify(arr)); localStorage.setItem('malgussi_current_index_v1','16'); sessionStorage.setItem('seeded','1'); location.reload(); return;
+  }
+  setTimeout(()=>{ if(window.openV352Playlist) window.openV352Playlist(); },800);
+},200);
+</script></body>
 </html>
