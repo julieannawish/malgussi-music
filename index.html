@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V3.87</title>
+<title>말구씨 음악 앱 · V3.88</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -199,7 +199,7 @@ input[type=file]{display:none}
 .v352-screen.open{display:block}.v352-inner{max-width:720px;margin:auto}.v352-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.v352-title{font-size:24px;font-weight:900}.v352-close{width:46px;height:46px;border-radius:50%;background:#EAF2FF;color:#2457A6;border:1px solid #9FC2FF;font-size:27px}
 .v352-section{background:#fff;border:1px solid #E8DED6;border-radius:18px;padding:14px;margin:10px 0}.v352-section-title{font-size:17px;font-weight:900;margin-bottom:9px}.v352-folder{background:#FFF8F0;border:1px solid #E7D7C6;border-radius:14px;padding:12px}.v352-path{font-size:14px;color:#665D58;line-height:1.5;word-break:break-all}.v352-btn{width:100%;height:50px;border-radius:14px;background:#EAF2FF;color:#2457A6;border:1px solid #9FC2FF;font-weight:900;margin-top:9px}.v352-profile{display:flex;gap:13px;align-items:center}.v352-profile img{width:98px;height:98px;border-radius:20px;object-fit:cover;background:#F4EEE8;border:1px solid #E2D7CF}.v352-input{width:100%;height:43px;border-radius:11px;border:1px solid #DCCFC5;background:#FFFEFC;padding:0 11px;color:#3A241A;font-weight:700;margin-top:6px}.v352-note{font-size:13px;color:#756A62;line-height:1.5;margin-top:8px}.v352-mode{display:flex;gap:7px}.v352-mode button{flex:1;height:43px;border-radius:12px;background:#F2EEEA;color:#6B625D;font-weight:900;border:1px solid #E1D8D0}.v352-mode button.on{background:#EAF8F1;color:#218451;border-color:#A9DEC2}
 .v352-tabs{display:flex;gap:7px;margin-bottom:10px}.v352-tab{flex:1;height:42px;border-radius:12px;background:#F3EEE9;color:#6B625D;font-weight:900}.v352-tab.on{background:#EAF2FF;color:#2457A6;border:1px solid #9FC2FF}.v352-row{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:60px;touch-action:pan-y;user-select:none}.v352-check{width:30px;height:30px;border-radius:50%;border:2px solid #CFC4BB;background:#fff;color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 30px;font-weight:900}.v352-check.on{background:#2457A6;border-color:#2457A6}.v352-thumb{width:52px;height:52px;border-radius:11px;object-fit:cover;background:#F1ECE7;flex:0 0 52px}.v352-info{flex:1;min-width:0}.v352-name{font-size:15px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.v352-sub{font-size:12px;color:#6B625D;margin-top:2px}.v352-add{width:100%;height:54px;border-radius:15px;background:#2457A6;color:#fff;font-weight:900;margin-top:10px}.v352-select-footer{position:sticky;bottom:8px;display:flex;justify-content:space-between;align-items:center;background:rgba(255,252,248,.96);border:1px solid #E2D7CF;border-radius:15px;padding:10px;margin-top:12px;backdrop-filter:blur(8px)}.v352-delete{height:44px;padding:0 17px;border-radius:12px;background:#FFF0EB;color:#B4472E;border:1px solid #E5B9A7;font-weight:900}.v352-pl-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:60px;touch-action:pan-y;user-select:none}.v352-pl-row.sel{background:#F5EADF;border-color:#B99373;box-shadow:inset 4px 0 0 #8B664A}.v352-drag{width:34px;height:42px;border-radius:9px;background:#F1EEEA;color:#777;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 34px;touch-action:none}.v352-num{width:27px;text-align:center;color:#6B625D;font-weight:800}.v352-empty{text-align:center;color:#6B625D;padding:40px 10px;line-height:1.6}
-/* V3.87: clean, dedicated playlist file-picker screen */
+/* V3.88: clean, dedicated playlist file-picker screen */
 #v352PlaylistPicker{padding:0 14px max(14px,env(safe-area-inset-bottom));box-sizing:border-box;overflow:hidden!important;}
 #v352PlaylistPicker.open{display:flex!important;flex-direction:column;}
 #v352PlaylistPicker .picker-inner{width:100%;max-width:720px;height:100%;max-height:100%;margin:0 auto;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;}
@@ -227,8 +227,7 @@ input[type=file]{display:none}
 #v352PlaylistPicker .picker-footer{flex:0 0 auto;position:sticky;bottom:0;margin:8px 0 0;padding:10px 8px max(10px,env(safe-area-inset-bottom));}
 #v352PlaylistPicker .picker-footer .v352-add{margin:0;height:52px;max-width:none;flex:1;font-size:16px;}
 #v352PlaylistPicker .picker-footer span{font-size:15px;font-weight:900;white-space:nowrap;}
-/* V3.87: 기본 미디어는 설정에서 폴더만 지정합니다. 구형 별도 미디어 화면은 노출하지 않습니다. */
-#v352Media{display:none!important;}
+/* V3.88: 기본 미디어는 설정에서 폴더만 지정합니다. 구형 별도 미디어 화면은 노출하지 않습니다. */
 
 
 .v352-pl-row{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:64px;touch-action:pan-y;user-select:none}.v352-pl-row.sel{background:#F4E8DC;border:2px solid #8B664A}.v352-pl-row.dragging{opacity:.5}.v352-pl-row.drop{border:2px dashed #2457A6;background:#EEF5FF}.v352-num{width:28px;text-align:center;color:#665D58;font-weight:900}.v352-drag{width:38px;height:44px;border-radius:10px;background:#F2F2F2;color:#777;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:900;touch-action:none}.v352-pl-footer{display:flex;align-items:center;gap:10px;margin:12px 0}.v352-pl-footer .storage-delete{margin:0;flex:1}.v352-empty{text-align:center;color:#665D58;background:#fff;border:1px solid #E8DED6;border-radius:16px;padding:35px 15px;line-height:1.6}
@@ -260,9 +259,6 @@ button,img,.app,.card,.v352-screen,.v352-screen *{ -webkit-user-select:none; use
 #v352PlaylistPicker > .v352-inner{min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 #v352PlaylistPickerList{min-height:0;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 1px 8px;}
 #v352PlaylistPicker .v352-select-footer,#v352PlaylistPicker .v352-note,#v352PlaylistPicker > .v352-inner > .v352-head,#v352PlaylistPicker > .v352-inner > .v352-section{flex:0 0 auto;}
-#v352Media > .v352-inner{min-height:0;display:flex;flex-direction:column;overflow:hidden;}
-#v352MediaList{min-height:0;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 1px 8px;}
-#v352Media .v352-select-footer,#v352Media .v352-note,#v352Media > .v352-inner > .v352-head,#v352Media > .v352-inner > .v352-section,#v352Media > .v352-inner > .v352-tabs{flex:0 0 auto;}
 #v352PlaylistList{min-height:0;flex:1 1 0;width:100%;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;padding:0 1px 8px;}
 #v352Playlist .v352-pl-footer,#v352Playlist .v352-note,#v352Playlist > .v352-inner > .v352-head,#v352Playlist > .v352-inner > .v352-section{flex:0 0 auto;}
 #v352Playlist .v352-note{padding-bottom:4px;}
@@ -421,7 +417,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.87</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.88</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -442,22 +438,13 @@ html,body{width:100%;overflow:hidden;}
       <span class="picker-head-spacer" aria-hidden="true"></span>
     </div>
     <section class="picker-source">
-      <div class="picker-source-title">폴더를 열어 파일을 선택하세요</div>
-      <div id="v352PlaylistPickerFolder" class="v352-path">미디어 파일을 불러오는 중입니다.</div>
-      <div id="v352PlaylistPickerBreadcrumb" class="picker-breadcrumb" aria-label="폴더 위치"></div><div class="picker-explorer-note">📁 폴더를 누르면 하위 폴더로 들어갑니다 · <b>‹ 상위 폴더</b>로 돌아갑니다.</div>
+      <div class="picker-source-title">📁 폴더에서 파일을 선택하세요</div>
+      <div id="v352PlaylistPickerFolder" class="v352-path">기본 미디어 폴더를 불러오는 중입니다.</div>
+      <div id="v352PlaylistPickerBreadcrumb" class="picker-breadcrumb" aria-label="현재 폴더 위치"></div>
+      <div class="picker-explorer-note">폴더를 누르면 안으로 들어갑니다. <b>‹ 상위 폴더</b>로 돌아갈 수 있습니다.</div>
     </section>
         <div id="v352PlaylistPickerList"></div>
-    <div class="v352-select-footer picker-footer"><span id="v352PlaylistPickerSelectedCount">선택 0개</span><button id="v352PlaylistPickerAdd" class="v352-add" disabled>재생목록에 추가</button></div>
-  </div>
-</div>
-<div id="v352Media" class="v352-screen" aria-hidden="true">
-  <div class="v352-inner">
-    <div class="v352-head"><div class="v352-title">📁 기본 미디어</div><button class="v352-close" data-v352-close="v352Media">×</button></div>
-    <section class="v352-section"><div class="v352-section-title">말구씨 기본 미디어 폴더</div><div id="v352MediaFolder" class="v352-path">기본 미디어 폴더가 지정되지 않았습니다.</div></section>
-    <div class="v352-tabs"><button class="v352-tab on" data-v352-filter="all">전체</button><button class="v352-tab" data-v352-filter="audio">음악</button><button class="v352-tab" data-v352-filter="video">영상</button></div>
-    <div id="v352MediaList"></div>
-    <div class="v352-select-footer"><span id="v352MediaSelectedCount">선택 0개</span><button id="v352MediaAdd" class="v352-add" disabled>재생목록에 추가</button></div>
-    <div class="v352-note">기본 미디어 폴더의 파일만 선택할 수 있습니다. 새 파일은 재생목록에 자동으로 추가되지 않습니다.</div>
+    <div class="v352-select-footer picker-footer"><span id="v352PlaylistPickerSelectedCount">선택 0개</span><button id="v352PlaylistPickerAdd" class="v352-add" disabled>선택한 파일 추가</button></div>
   </div>
 </div>
 <div id="v352Playlist" class="v352-screen" aria-hidden="true">
@@ -732,7 +719,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.87';
+const APP_VERSION='V3.88';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1131,7 +1118,7 @@ $('files').addEventListener('change',async e=>{
   if(selected.length){
     mediaFiles=selected;
     msel.clear();
-    if(document.getElementById('v352Media')?.classList.contains('open')){
+    if(false && document.getElementById('v352Media')?.classList.contains('open')){
       renderMedia();
     }
     $('status').textContent=`${selected.length}개 파일을 불러왔습니다. 추가할 파일을 선택하세요.`;
@@ -1853,7 +1840,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=386',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=388',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1957,7 +1944,7 @@ let mediaFiles=[];
     }));
   }
   async function open(id){
-    // V3.87: management screens are mutually exclusive. The playlist picker
+    // V3.88: management screens are mutually exclusive. The playlist picker
     // must appear above/after the playlist screen instead of being painted
     // underneath it. This was the reason tapping "＋ 추가" looked like
     // nothing happened: v352Playlist stayed open at the same z-index.
@@ -1986,7 +1973,7 @@ let mediaFiles=[];
   }
   async function close(id){
     q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true');
-    // V3.87: closing the add-file picker returns to playlist management.
+    // V3.88: closing the add-file picker returns to playlist management.
     // The previous version closed the picker while its parent playlist screen
     // had already been hidden, leaving the user with a blank/underlying view.
     if(id==='v352PlaylistPicker'){
@@ -1998,7 +1985,7 @@ let mediaFiles=[];
   q('v352PlaylistPicker').querySelector('.picker-back').onclick=()=>{ if(pickerPath.length){pickerPath.pop(); renderPlaylistPicker();} else close('v352PlaylistPicker'); };
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
-  // V3.87: 기본 미디어는 설정에서 폴더만 지정합니다. 별도의
+  // V3.88: 기본 미디어는 설정에서 폴더만 지정합니다. 별도의
   // "기본 미디어 보기" 화면은 재생목록 흐름에서 사용하지 않습니다.
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
@@ -2090,6 +2077,17 @@ let mediaFiles=[];
     if(!playlistPickerFiles.length){
       try{playlistPickerFiles=await loadCachedMediaFiles();}catch(e){playlistPickerFiles=[];}
     }
+    // Never turn a folder-based picker into a flat media list. The picker must
+    // have path information so folders can be shown and navigated.
+    if(playlistPickerFiles.length){
+      const firstPath=String(playlistPickerFiles[0].webkitRelativePath||'');
+      const hasHierarchy=playlistPickerFiles.some(f=>String(f.webkitRelativePath||'').includes('/'));
+      if(!hasHierarchy){
+        playlistPickerFiles=[];
+        pickerRootName='';
+        q('v352PlaylistPickerFolder').textContent='폴더 구조를 불러올 수 없습니다. 설정에서 기본 미디어 폴더를 다시 지정해 주세요.';
+      }
+    }
     if(!pickerRootName && playlistPickerFiles.length){
       const first=(playlistPickerFiles[0].webkitRelativePath||playlistPickerFiles[0].name||'').split('/').filter(Boolean);
       pickerRootName=first.length>1?first[0]:'기본 미디어 폴더';
@@ -2163,7 +2161,7 @@ let mediaFiles=[];
     }
     updatePlaylistPickerSelectionUI();
   }
-  function loadFolderMeta2(){try{const m=JSON.parse(localStorage.getItem(FM)||localStorage.getItem('malgussi_recent_music_folder_v1')||'null');const txt=m?(m.name+' · '+(m.count||m.fileCount||0)+'개 파일'):'아직 지정하지 않았습니다.';q('v352FolderPath').textContent=txt;q('v352MediaFolder').textContent=txt}catch(e){}}
+  function loadFolderMeta2(){try{const m=JSON.parse(localStorage.getItem(FM)||localStorage.getItem('malgussi_recent_music_folder_v1')||'null');const txt=m?(m.name+' · '+(m.count||m.fileCount||0)+'개 파일'):'아직 지정하지 않았습니다.';q('v352FolderPath').textContent=txt;if(q('v352MediaFolder')) q('v352MediaFolder').textContent=txt}catch(e){}}
   function saveFolderMeta2(files){const a=[...files];const p=a.map(f=>f.webkitRelativePath||'').find(Boolean);const name=p?p.split('/')[0]:'기본 미디어 폴더';localStorage.setItem(FM,JSON.stringify({name,count:a.length,at:Date.now()}));loadFolderMeta2()}
   async function chooseFolder(){
     if('showDirectoryPicker' in window){
