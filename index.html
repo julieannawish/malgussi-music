@@ -417,7 +417,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.88</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.89</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -434,17 +434,17 @@ html,body{width:100%;overflow:hidden;}
   <div class="v352-inner picker-inner">
     <div class="v352-head picker-head">
       <button class="picker-back" data-v352-close="v352PlaylistPicker" aria-label="뒤로">‹</button>
-      <div class="v352-title picker-title">재생목록에 추가</div>
+      <div class="v352-title picker-title">파일 탐색</div>
       <span class="picker-head-spacer" aria-hidden="true"></span>
     </div>
     <section class="picker-source">
-      <div class="picker-source-title">📁 폴더에서 파일을 선택하세요</div>
+      <div class="picker-source-title">📁 재생목록에 넣을 파일을 선택하세요</div>
       <div id="v352PlaylistPickerFolder" class="v352-path">기본 미디어 폴더를 불러오는 중입니다.</div>
       <div id="v352PlaylistPickerBreadcrumb" class="picker-breadcrumb" aria-label="현재 폴더 위치"></div>
       <div class="picker-explorer-note">폴더를 누르면 안으로 들어갑니다. <b>‹ 상위 폴더</b>로 돌아갈 수 있습니다.</div>
     </section>
         <div id="v352PlaylistPickerList"></div>
-    <div class="v352-select-footer picker-footer"><span id="v352PlaylistPickerSelectedCount">선택 0개</span><button id="v352PlaylistPickerAdd" class="v352-add" disabled>선택한 파일 추가</button></div>
+    <div class="v352-select-footer picker-footer"><span id="v352PlaylistPickerSelectedCount">선택 0개</span><button id="v352PlaylistPickerAdd" class="v352-add" disabled>재생목록에 추가</button></div>
   </div>
 </div>
 <div id="v352Playlist" class="v352-screen" aria-hidden="true">
@@ -719,7 +719,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.88';
+const APP_VERSION='V3.89';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1990,8 +1990,15 @@ let mediaFiles=[];
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
   q('v352OpenMedia').onclick=async()=>{
+    // V3.89: this button is ONLY the playlist-add explorer entry point.
+    // Never open the legacy flat media list. On iOS, request permission from
+    // the direct tap when a saved directory handle needs it, then recursively
+    // rebuild the folder tree before rendering.
     await open('v352PlaylistPicker');
   };
+  // Defensive cleanup: the playlist-add flow must never show the legacy
+  // flat media-filter UI. If an older cached DOM is present, remove it.
+  document.querySelectorAll('#v352PlaylistPicker [data-v352-filter], #v352PlaylistPicker .media-filter, #v352PlaylistPicker .legacy-media-list').forEach(el=>el.remove());
   q('v352PlaylistPickerAdd').onclick=async()=>{
     const selected=playlistPickerFiles.filter(f=>pmsel.has(idForFile(f)));
     if(!selected.length){toast2('추가할 곡을 먼저 선택하세요.');return;}
@@ -2063,43 +2070,49 @@ let mediaFiles=[];
   async function loadPlaylistPickerFiles(){
     playlistPickerFiles=[];
     pickerRootName='';
-    try{
-      const h=await loadMusicDirectoryHandle();
-      if(h){
-        let p='granted';
-        try{p=await h.queryPermission({mode:'read'});}catch(e){}
-        if(p==='granted'){
-          pickerRootName=h.name||'';
-          playlistPickerFiles=await collectDirectoryMedia(h,'');
+    pickerPath=[];
+    let handle=null;
+    try{ handle=await loadMusicDirectoryHandle(); }catch(e){ handle=null; }
+
+    // The playlist-add screen must be a real folder explorer. If a saved
+    // directory handle exists, request read permission here (this function is
+    // called from the user's Add tap) and recursively read the complete tree.
+    if(handle){
+      try{
+        let p='denied';
+        if(typeof handle.queryPermission==='function') p=await handle.queryPermission({mode:'read'});
+        if(p!=='granted' && typeof handle.requestPermission==='function'){
+          try{ p=await handle.requestPermission({mode:'read'}); }catch(e){}
         }
-      }
-    }catch(e){console.warn('loadPlaylistPickerFiles',e)}
+        if(p==='granted'){
+          pickerRootName=handle.name||'기본 미디어';
+          playlistPickerFiles=await collectDirectoryMedia(handle,'');
+        }
+      }catch(e){ console.warn('playlist explorer permission/read',e); }
+    }
+
+    // Cached files are only acceptable when their relative path is preserved.
+    // A flat cache is deliberately rejected: showing it would turn this into
+    // the old "전체/음악/영상" media list instead of a folder explorer.
     if(!playlistPickerFiles.length){
-      try{playlistPickerFiles=await loadCachedMediaFiles();}catch(e){playlistPickerFiles=[];}
+      try{
+        const cached=await loadCachedMediaFiles();
+        const hasPath=cached.length>0 && cached.every(f=>String(f.webkitRelativePath||'').includes('/'));
+        if(hasPath){
+          playlistPickerFiles=cached;
+          const first=String(cached[0].webkitRelativePath||'').split('/').filter(Boolean);
+          pickerRootName=(first.length>1?first[0]:'기본 미디어');
+        }
+      }catch(e){ playlistPickerFiles=[]; }
     }
-    // Never turn a folder-based picker into a flat media list. The picker must
-    // have path information so folders can be shown and navigated.
+
+    let m=null;
+    try{m=JSON.parse(localStorage.getItem(FM)||'null')}catch(e){}
     if(playlistPickerFiles.length){
-      const firstPath=String(playlistPickerFiles[0].webkitRelativePath||'');
-      const hasHierarchy=playlistPickerFiles.some(f=>String(f.webkitRelativePath||'').includes('/'));
-      if(!hasHierarchy){
-        playlistPickerFiles=[];
-        pickerRootName='';
-        q('v352PlaylistPickerFolder').textContent='폴더 구조를 불러올 수 없습니다. 설정에서 기본 미디어 폴더를 다시 지정해 주세요.';
-      }
-    }
-    if(!pickerRootName && playlistPickerFiles.length){
-      const first=(playlistPickerFiles[0].webkitRelativePath||playlistPickerFiles[0].name||'').split('/').filter(Boolean);
-      pickerRootName=first.length>1?first[0]:'기본 미디어 폴더';
-    }
-    let m=null; try{m=JSON.parse(localStorage.getItem(FM)||'null')}catch(e){}
-    if(m){
-      if(!pickerRootName || pickerRootName==='기본 미디어 폴더') pickerRootName=m.name||pickerRootName;
-      q('v352PlaylistPickerFolder').textContent=(m.name||pickerRootName||'기본 미디어 폴더')+' · '+(m.count||m.fileCount||playlistPickerFiles.length)+'개 파일';
-    }else if(playlistPickerFiles.length){
-      q('v352PlaylistPickerFolder').textContent=(pickerRootName||'기본 미디어 폴더')+' · '+playlistPickerFiles.length+'개 파일';
+      if(!pickerRootName || pickerRootName==='기본 미디어') pickerRootName=m?.name||pickerRootName;
+      q('v352PlaylistPickerFolder').textContent=(pickerRootName||'기본 미디어')+' · 폴더를 탐색하세요';
     }else{
-      q('v352PlaylistPickerFolder').textContent='설정에서 기본 미디어 폴더를 지정하세요.';
+      q('v352PlaylistPickerFolder').textContent='기본 미디어 폴더를 열 수 없습니다. 설정에서 지정한 폴더의 접근 권한을 확인해 주세요.';
     }
     return playlistPickerFiles.length>0;
   }
