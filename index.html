@@ -159,6 +159,29 @@ input[type=file]{display:none}
   display:block;
 }
 .video-frame[hidden]{display:none!important}
+.video-run-btn{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:40;
+  min-width:112px;
+  height:48px;
+  padding:0 18px;
+  border:1px solid rgba(255,255,255,.65);
+  border-radius:24px;
+  background:rgba(0,0,0,.58);
+  color:#fff;
+  font-size:17px;
+  font-weight:800;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.video-run-btn.show{display:flex}
+.video-run-btn:active{transform:translate(-50%,-50%) scale(.97)}
+
 .video-player{
   width:100%;
   height:100%;
@@ -368,7 +391,8 @@ html,body{width:100%;overflow:hidden;}
     <div id="mediaStage" class="media-stage">
     <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
     <div id="videoFrame" class="video-frame" hidden>
-      <video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="metadata"></video>
+      <video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="auto"></video>
+      <button id="videoRunBtn" class="video-run-btn" type="button" aria-label="영상 실행">▶ 실행</button>
       <button id="btnPiP" class="video-pip-btn" type="button"
         title="작은 화면으로 전환" aria-label="작은 화면으로 전환" aria-hidden="true">↗</button>
       <button id="btnAirPlay" class="video-airplay-btn" type="button"
@@ -417,7 +441,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.90</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.91</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -719,7 +743,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.90';
+const APP_VERSION='V3.91';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -773,6 +797,7 @@ function showArtworkFrame(){
   $('mediaStage').classList.remove('video-mode');
   $('videoFrame').hidden=true;
   $('videoFrame').style.display='none';
+  const rb=$('videoRunBtn'); if(rb) rb.classList.remove('show');
   video.hidden=true;
   $('mainImage').hidden=false;
   $('mainImage').style.display='block';
@@ -1172,12 +1197,20 @@ async function playActiveMedia(fromUserGesture=false){
       timer=setTimeout(()=>finish(!m.paused && !m.ended),1200);
     });
     if(!actuallyPlaying) throw new Error('media did not enter playing state');
+    if(m===video){
+      // The video is already running automatically; keep a visible in-frame
+      // 실행 button so the user can tap the video itself to resume/unmute.
+      const rb=$('videoRunBtn');
+      if(rb) rb.classList.add('show');
+    }
     setMediaSessionState('playing');
     updateUI();
     return true;
   }catch(e){
     if(m===video){
       video.autoplay=false;
+      const rb=$('videoRunBtn');
+      if(rb) rb.classList.add('show');
       $('status').textContent=fromUserGesture
         ?'동영상을 재생하지 못했습니다. 다시 재생 버튼을 눌러 주세요.'
         :'동영상 자동재생이 제한되었습니다. 재생 버튼을 눌러 주세요.';
@@ -1268,7 +1301,19 @@ async function loadCurrent(autoplay,fromUserGesture=false){
 
   activeMedia.load();
   let playSucceeded=false;
-  if(autoplay){
+  if(isVideoFile(f)){
+    // MP4: enter the video frame and attempt immediate autoplay. On iOS/Safari
+    // a soundful autoplay may be blocked; fall back to muted autoplay so the
+    // video still starts visually. A later user tap can restore sound.
+    playSucceeded=await playActiveMedia(fromUserGesture);
+    if(!playSucceeded && !fromUserGesture){
+      try{
+        video.muted=true;
+        video.volume=0;
+        playSucceeded=await playActiveMedia(false);
+      }catch(e){}
+    }
+  }else if(autoplay){
     playSucceeded=await playActiveMedia(fromUserGesture);
   }
   if(playSucceeded) $('status').textContent='';
@@ -1823,6 +1868,15 @@ function updateUI(){
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
+if($('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
+  if(video.paused){
+    video.muted=false; video.volume=1;
+    const ok=await playActiveMedia(true);
+    if(ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
+  }else{
+    video.pause(); setMediaSessionState('paused'); updateUI();
+  }
+};
 if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
@@ -1990,7 +2044,7 @@ let mediaFiles=[];
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
   q('v352OpenMedia').onclick=()=>{
-    // V3.90: restore the V3.68 proven behavior ONLY for this button.
+    // V3.91: restore the V3.68 proven behavior ONLY for this button.
     // The tap synchronously opens the native iOS Files picker.
     psel.clear();
     const picker=q('mediaFilesPicker');
