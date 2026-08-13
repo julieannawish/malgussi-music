@@ -1,4 +1,4 @@
-# 말구씨 음악앱 V3.94
+# 말구씨 음악앱 V3.95
 
 ## 이번 버전 범위
 V3.93을 기준본으로 하고, 기존 PASS 기능은 유지하면서 최초 실행/기본 재생 초기화와 MP4 상태 표시, 재생방식 기본값의 안정성을 보완했습니다.
@@ -10,7 +10,7 @@ V3.93을 기준본으로 하고, 기존 PASS 기능은 유지하면서 최초 �
 - MP4 재생 이벤트에서 프레임 내부 `실행` 오버레이와 외부 `재생/잠시멈춤` 상태를 동기화하는 기존 V3.92/V3.93 동작을 보존했습니다.
 - 재생목록 관리 화면 진입 시에는 MP4 자동재생하지 않고, 기본 화면으로 복귀할 때만 자동재생하는 V3.93 정책을 유지했습니다.
 - V3.90에서 PASS된 `재생목록 관리 → + 추가 → iPhone 파일 선택창` 흐름은 변경하지 않았습니다.
-- Service Worker/manifest 버전을 V3.94로 갱신했습니다.
+- Service Worker/manifest 버전을 V3.95로 갱신했습니다.
 
 ## 1차 QA 결과
 - HTML 내 JavaScript 4개 스크립트 `node --check`: PASS
@@ -20,7 +20,7 @@ V3.93을 기준본으로 하고, 기존 PASS 기능은 유지하면서 최초 �
 - 최초 부팅 fast path 적용: PASS
 - 재생 방식 값 정규화: PASS
 - 재생목록 진입 시 자동재생 금지 / 복귀 시 자동재생 코드: PASS
-- Service Worker cache key / manifest start_url: V3.94 반영
+- Service Worker cache key / manifest start_url: V3.95 반영
 - ZIP 무결성: 배포 전 검사 예정
 
 ## iPhone에서만 최종 확인이 필요한 항목

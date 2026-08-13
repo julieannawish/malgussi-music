@@ -441,7 +441,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.94</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.95</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -743,7 +743,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.94';
+const APP_VERSION='V3.95';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1385,11 +1385,10 @@ async function stepTo(delta){
   }
   await loadCurrent(true,true);
 }
-$('btnPrev').onclick=async()=>{ await appBootReady; await stepTo(-1); };
-$('btnNext').onclick=async()=>{ await appBootReady; await stepTo(1); };
+$('btnPrev').onclick=async()=>{ await stepTo(-1); };
+$('btnNext').onclick=async()=>{ await stepTo(1); };
 
 $('btnPlay').onclick=async()=>{
-  await appBootReady;
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
   const f=fileMap.get(playlist[index]?.id);
   if(!f){
@@ -1506,7 +1505,7 @@ function renderPlaylist(){
 
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
-function relinkFromFolder(files, cleanupMissing=true){
+function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
   if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 또는 MP4 동영상을 찾지 못했습니다.'; return; }
@@ -1536,7 +1535,7 @@ function relinkFromFolder(files, cleanupMissing=true){
     audio.pause(); audio.removeAttribute('src'); return;
   }
   $('status').textContent=removed?`${connected}곡 자동 연결 · 찾지 못한 ${removed}곡은 재생목록에서 삭제했습니다.`:`${connected}곡을 자동으로 모두 연결했습니다.`;
-  if(fileMap.has(playlist[index]?.id)) loadCurrent(false);
+  if(fileMap.has(playlist[index]?.id)) loadCurrent(false,false,fastBoot);
 }
 
 async function relinkFolder(){
@@ -2632,13 +2631,13 @@ let mediaFiles=[];
       // Restore the persistent file cache first. This keeps the playlist connected
       // even when iOS does not restore the directory handle permission immediately.
       const cachedFirst=await loadCachedMediaFiles();
-      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false);
+      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false,true);
       if(h && p==='granted'){
         const files=[];
         for await(const entry of h.values()){
           if(entry.kind==='file'){const f=await entry.getFile();if(isMediaFile(f))files.push(f);}
         }
-        if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files,true);}
+        if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files,true,true);}
       }
       if(playlist.length) await loadCurrent(false,false,true);
       else updateUI();
