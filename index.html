@@ -382,7 +382,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.76</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.78</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -636,14 +636,14 @@ async function openMediaCacheDB(){
     req.onerror=()=>reject(req.error);
   });
 }
-async function cacheMediaFiles(files){
+async function cacheMediaFiles(files,replaceAll=true){
   try{
     const arr=Array.from(files||[]).filter(isMediaFile);
     const db=await openMediaCacheDB();
     await new Promise((resolve,reject)=>{
       const tx=db.transaction(MEDIA_CACHE_STORE,'readwrite');
       const st=tx.objectStore(MEDIA_CACHE_STORE);
-      st.clear();
+      if(replaceAll) st.clear();
       for(const f of arr){
         const key=[String(f.name||''),Number(f.size||0),Number(f.lastModified||0),f.webkitRelativePath||f.name||''].join('|');
         st.put({blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name},key);
@@ -672,7 +672,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.76';
+const APP_VERSION='V3.78';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1164,12 +1164,23 @@ async function loadCurrent(autoplay){
   }
 
   activeMedia.load();
+  let playSucceeded=false;
   if(autoplay){
-    try{await activeMedia.play()}catch(e){}
+    try{
+      // The play promise is the source of truth. Never show the pause state
+      // unless the browser actually accepted playback.
+      await activeMedia.play();
+      playSucceeded=true;
+    }catch(e){
+      playSucceeded=false;
+      if(activeMedia===video){
+        $('status').textContent='동영상을 재생할 준비가 되었습니다. 재생 버튼을 눌러 주세요.';
+      }
+    }
   }
-  $('status').textContent='';
+  if(playSucceeded) $('status').textContent='';
   updateMediaSessionMetadata(currentArtwork);
-  setMediaSessionState(autoplay?'playing':'paused');
+  setMediaSessionState(playSucceeded?'playing':'paused');
   updateUI();
 }
 
@@ -1583,8 +1594,9 @@ audio.addEventListener('loadedmetadata',syncMediaUI);
 video.addEventListener('loadedmetadata',syncMediaUI);
 audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
-video.addEventListener('play',updateUI);
-video.addEventListener('pause',updateUI);
+video.addEventListener('play',()=>{setMediaSessionState('playing');updateUI();});
+video.addEventListener('pause',()=>{setMediaSessionState('paused');updateUI();});
+video.addEventListener('ended',()=>{setMediaSessionState('paused');updateUI();});
 function fitVideoFrameNoCrop(){
   const frame=$('videoFrame'), stage=$('mediaStage');
   if(!frame || !stage || video.hidden || !video.videoWidth || !video.videoHeight) return;
@@ -1725,7 +1737,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=374',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=378',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1839,7 +1851,7 @@ let mediaFiles=[];
     }
     if(added){
       saveList();
-      try{await cacheMediaFiles(selected);}catch(err){console.warn('cache selected media',err)}
+      try{await cacheMediaFiles(selected,false);}catch(err){console.warn('cache selected media',err)}
       // Keep the selected files available in the current media pool as well.
       mediaFiles = mediaFiles.concat(selected.filter(f=>!mediaFiles.some(x=>fileEquivalent({name:x.name,size:x.size,path:x.webkitRelativePath||x.name},f))));
       if(wasEmpty){
@@ -1848,11 +1860,18 @@ let mediaFiles=[];
       }else{
         updateUI();
       }
-      // Re-open the playlist management view after the native picker closes.
-      // This forces a fresh render of the actual playlist, not only the home count.
+      // Render the actual playlist immediately in the same screen flow.
+      // Do not wait for an async reopen: the newly selected File objects are
+      // already in fileMap, so the new rows must appear at once.
       close('v352Media');
-      open('v352Playlist');
+      q('v352Playlist').classList.add('open');
+      q('v352Playlist').setAttribute('aria-hidden','false');
+      psel.clear();
+      renderPL();
       q('status').textContent=`${added}곡을 재생목록에 추가했습니다.`;
+      // Reconcile cached/saved-folder sources in the background without
+      // replacing the visible list or delaying the user's view.
+      ensurePlaylistSources().then(()=>renderPL()).catch(()=>{});
     }else{
       q('status').textContent='이미 재생목록에 있는 파일입니다.';
       renderPL();
@@ -2034,6 +2053,16 @@ let mediaFiles=[];
     });
     updatePF();
   }
+  function refreshSelectionVisuals(){
+    document.querySelectorAll('#v352PlaylistList .v352-pl-row').forEach(row=>{
+      const id=playlist[Number(row.dataset.i)]?.id;
+      const on=!!id && psel.has(id);
+      row.classList.toggle('sel',on);
+      const check=row.querySelector('.v352-check');
+      if(check){check.classList.toggle('on',on);check.textContent=on?'✓':'';check.setAttribute('aria-label',(on?'선택 해제 ':'선택 ')+(playlist[Number(row.dataset.i)]?.name||''));}
+    });
+    updatePF();
+  }
   function setupSelectSlide(check,onPointerSelect){
     let active=false,seen=new Set();
     check.addEventListener('pointerdown',e=>{
@@ -2041,7 +2070,7 @@ let mediaFiles=[];
       onPointerSelect?.();
       const row=check.closest('.v352-pl-row');
       const id=playlist[Number(row?.dataset.i)]?.id;
-      if(id){toggleP(id);seen.add(id);}
+      if(id){toggleP(id,false);seen.add(id);}
       try{check.setPointerCapture?.(e.pointerId);}catch(err){}
       e.preventDefault();
     });
@@ -2049,11 +2078,11 @@ let mediaFiles=[];
       if(!active)return;
       const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');
       const id=playlist[Number(r?.dataset.i)]?.id;
-      if(id&&!seen.has(id)){toggleP(id);seen.add(id);}
+      if(id&&!seen.has(id)){toggleP(id,false);seen.add(id);}
     });
-    ['pointerup','pointercancel'].forEach(ev=>check.addEventListener(ev,()=>active=false));
+    ['pointerup','pointercancel'].forEach(ev=>check.addEventListener(ev,()=>{active=false;refreshSelectionVisuals()}));
   }
-  function toggleP(id){psel.has(id)?psel.delete(id):psel.add(id);renderPL()}
+  function toggleP(id,rerender=true){psel.has(id)?psel.delete(id):psel.add(id);if(rerender)renderPL();else refreshSelectionVisuals()}
   function duplicateGroups(){
     const seen=new Map(), dup=new Set();
     for(const t of playlist){
@@ -2078,7 +2107,7 @@ let mediaFiles=[];
     let active=false, mode=null, timer=null, startX=0, startY=0, seen=new Set();
     const clearTimer=()=>{if(timer){clearTimeout(timer);timer=null;}};
     const rowAt=(x,y)=>document.elementFromPoint(x,y)?.closest('.v352-pl-row');
-    const selectRow=(r)=>{const i=Number(r?.dataset.i);const id=playlist[i]?.id;if(id&&!seen.has(id)){psel.add(id);seen.add(id);renderPL();}};
+    const selectRow=(r)=>{const i=Number(r?.dataset.i);const id=playlist[i]?.id;if(id&&!seen.has(id)){psel.add(id);seen.add(id);refreshSelectionVisuals();}};
     handle.addEventListener('pointerdown',e=>{
       active=true;mode='pending';startX=e.clientX;startY=e.clientY;seen=new Set();
       try{handle.setPointerCapture?.(e.pointerId);}catch(err){}
