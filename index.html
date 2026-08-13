@@ -204,7 +204,7 @@ input[type=file]{display:none}
 
 .topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
 
-/* V3.69: responsive full-screen player + fixed playlist header/mode */
+/* V3.70: responsive full-screen player + fixed playlist header/mode */
 html,body{min-height:100%;}
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 button,img,.app,.card,.v352-screen,.v352-screen *{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
@@ -237,6 +237,54 @@ button,img,.app,.card,.v352-screen,.v352-screen *{ -webkit-user-select:none; use
   .card .art,.card .video-frame{min-height:140px;}
 }
 
+
+/* V3.70: playlist screen layout fix - keep header/mode fixed and make only the list scroll. */
+#v352Playlist {
+  width:100%; box-sizing:border-box;
+  overflow:hidden !important;
+  display:none; flex-direction:column;
+  padding-left:max(12px, env(safe-area-inset-left));
+  padding-right:max(12px, env(safe-area-inset-right));
+}
+#v352Playlist.open { display:flex; }
+#v352Playlist > .v352-inner {
+  width:100%; max-width:720px; height:100%; min-height:0;
+  margin:0 auto; box-sizing:border-box;
+  display:flex; flex-direction:column;
+}
+#v352Playlist .v352-head,
+#v352Playlist > .v352-inner > .v352-section {
+  flex:0 0 auto; width:100%; box-sizing:border-box;
+}
+#v352Playlist .v352-mode {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px; width:100%; box-sizing:border-box;
+}
+#v352Playlist .v352-mode button {
+  min-width:0; width:100%; box-sizing:border-box;
+  padding:0 4px; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; font-size:clamp(13px,3.8vw,17px);
+}
+#v352PlaylistList {
+  flex:1 1 auto; min-height:0; width:100%; box-sizing:border-box;
+  overflow-y:auto !important; overflow-x:hidden !important;
+  -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  touch-action:pan-y; padding:0 1px 8px;
+}
+#v352Playlist .v352-pl-row {
+  width:100%; max-width:100%; box-sizing:border-box;
+}
+#v352Playlist .v352-info {
+  min-width:0; flex:1 1 auto; overflow:hidden;
+}
+#v352Playlist .v352-name, #v352Playlist .v352-sub {
+  min-width:0; max-width:100%; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;
+}
+#v352Playlist .v352-pl-footer,
+#v352Playlist .v352-note {
+  flex:0 0 auto; width:100%; box-sizing:border-box;
+}
 </style>
 
 
@@ -297,7 +345,7 @@ button,img,.app,.card,.v352-screen,.v352-screen *{ -webkit-user-select:none; use
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.69</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.70</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -587,7 +635,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.69';
+const APP_VERSION='V3.70';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
