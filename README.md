@@ -1,4 +1,4 @@
-# 말구씨 음악앱 V3.83
+# 말구씨 음악앱 V3.84
 
 재생목록 추가/스크롤 스마트 수정 및 전체 기능 회귀 점검본.
 
@@ -15,11 +15,11 @@
 - MP3/MP4 재생, 폴더 복원, 중복 정리, 반복 재생 등 기존 기능을 유지합니다.
 
 ## 버전 일관성
-앱 화면, JavaScript APP_VERSION, manifest, Service Worker 캐시, build meta, README를 모두 V3.83로 통일했습니다.
+앱 화면, JavaScript APP_VERSION, manifest, Service Worker 캐시, build meta, README를 모두 V3.84로 통일했습니다.
 
 ## 점검
 - HTML/JavaScript 정적 문법 검사 완료
-- V3.83 버전 문자열 및 `v383/` 패키지 경로 검사 완료
+- V3.84 버전 문자열 및 `v384/` 패키지 경로 검사 완료
 - 재생목록 스크롤 컨테이너 CSS 검사 완료
 - 기본 미디어 → 재생목록 추가 → 메시지 → 자동 스크롤 코드 경로 검사 완료
 - 중복 추가 방지 코드 경로 검사 완료
