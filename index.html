@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V372">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V371">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -202,7 +202,7 @@ input[type=file]{display:none}
 
 .v352-pl-row{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:64px;touch-action:none;user-select:none}.v352-pl-row.sel{background:#F4E8DC;border:2px solid #8B664A}.v352-pl-row.dragging{opacity:.5}.v352-pl-row.drop{border:2px dashed #2457A6;background:#EEF5FF}.v352-num{width:28px;text-align:center;color:#665D58;font-weight:900}.v352-drag{width:38px;height:44px;border-radius:10px;background:#F2F2F2;color:#777;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:900;touch-action:none}.v352-pl-footer{display:flex;align-items:center;gap:10px;margin:12px 0}.v352-pl-footer .storage-delete{margin:0;flex:1}.v352-empty{text-align:center;color:#665D58;background:#fff;border:1px solid #E8DED6;border-radius:16px;padding:35px 15px;line-height:1.6}.v352-row{touch-action:none}
 
-.topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn.dedupe{background:#FFF8E8;color:#9A6A00;border-color:#E5C77A}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
+.topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
 
 /* V3.70: responsive full-screen player + fixed playlist header/mode */
 html,body{min-height:100%;}
@@ -252,6 +252,13 @@ html,body{width:100%;overflow:hidden;}
 .card .progress-row{margin-bottom:4px;}
 .card > .menu{margin-top:4px;}
 
+
+/* V3.73: MP4 media fills the media frame instead of leaving large black bars.
+   The media stage remains bounded so the bottom controls stay visible. */
+.media-stage.video-mode{background:#000;}
+.media-stage.video-mode .video-frame{background:#000;}
+.media-stage.video-mode .video-player{object-fit:cover;object-position:center center;}
+
 /* V3.70: playlist screen layout fix - keep header/mode fixed and make only the list scroll. */
 #v352Playlist {
   width:100%; box-sizing:border-box;
@@ -299,27 +306,6 @@ html,body{width:100%;overflow:hidden;}
 #v352Playlist .v352-note {
   flex:0 0 auto; width:100%; box-sizing:border-box;
 }
-
-/* V3.72: stable playlist UX - fixed header/footer, list-only scroll, safe action widths */
-#v352Playlist .v352-pl-footer{display:flex;align-items:center;gap:8px;padding:8px 0 calc(8px + env(safe-area-inset-bottom));background:#FFFCF8;}
-#v352Playlist .v352-pl-footer > #v352SelectedCount{flex:0 0 auto;white-space:nowrap;font-size:13px;color:#665D58;}
-#v352Playlist .pl-actions{flex:1 1 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-left:0;min-width:0;}
-#v352Playlist .pl-icon-btn{width:100%;min-width:0;height:50px;padding:3px 2px;}
-#v352Playlist .pl-icon-btn span{font-size:20px;}
-#v352Playlist .pl-icon-btn small{font-size:11px;white-space:nowrap;}
-#v352PlaylistList{overscroll-behavior-y:contain;scrollbar-width:thin;}
-#v352Playlist .v352-pl-row{touch-action:pan-y;}
-#v352Playlist .v352-drag{touch-action:none;cursor:grab;}
-@media(max-width:390px){#v352Playlist .v352-pl-footer{gap:5px}#v352Playlist .pl-actions{gap:5px}#v352Playlist .pl-icon-btn small{font-size:10px}}
-
-/* V3.72: single media surface and current-track emphasis */
-#mediaStage{position:relative;isolation:isolate;}
-#mediaStage > .art,#mediaStage > .video-frame{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;}
-#mediaStage > .art{object-fit:contain;}
-#mediaStage > .video-frame{object-fit:contain;}
-#mediaStage > .video-frame .video-player{width:100%;height:100%;object-fit:contain;}
-#v352Playlist .v352-pl-row.current-track{border:2px solid #2457A6;background:#F4F8FF;box-shadow:inset 4px 0 0 #2457A6;}
-#v352Playlist .v352-pl-row.current-track .v352-num{color:#2457A6;}
 </style>
 
 
@@ -382,7 +368,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.72</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.70</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -409,7 +395,7 @@ html,body{width:100%;overflow:hidden;}
     <div class="v352-head"><div class="v352-title">☰♫ 재생목록 관리</div><button class="v352-close" data-v352-close="v352Playlist">×</button></div>
     <section class="v352-section"><div class="v352-section-title">재생 방식</div><div class="v352-mode"><button data-v352-mode="none">반복 안 함</button><button data-v352-mode="order">순서 반복</button><button data-v352-mode="random">랜덤 반복</button><button data-v352-mode="one">한 곡 반복</button></div></section>
     <div id="v352PlaylistList"></div>
-    <div class="v352-pl-footer"><span id="v352SelectedCount">선택 0개</span><div class="pl-actions"><button id="v352OpenMedia" class="pl-icon-btn add" aria-label="추가"><span>＋</span><small>추가</small></button><button id="v352Dedupe" class="pl-icon-btn dedupe" aria-label="중복정리"><span>⧉</span><small>중복정리</small></button><button id="v352Delete" class="pl-icon-btn delete" disabled aria-label="삭제"><span>🗑</span><small>삭제</small></button></div></div>
+    <div class="v352-pl-footer"><span id="v352SelectedCount">선택 0개</span><div class="pl-actions"><button id="v352OpenMedia" class="pl-icon-btn add" aria-label="추가"><span>＋</span><small>추가</small></button><button id="v352Delete" class="pl-icon-btn delete" disabled aria-label="삭제"><span>🗑</span><small>삭제</small></button></div></div>
     <div class="v352-note">● 여러 곡을 손가락으로 연속 선택할 수 있습니다.<br>≡ 선택한 곡은 드래그하여 묶음으로 순서를 바꿀 수 있습니다.<br>원본 파일은 삭제하지 않습니다.</div>
   </div>
 </div>
@@ -672,7 +658,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.72';
+const APP_VERSION='V3.73';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -705,6 +691,7 @@ function isVideoFile(f){
 }
 function isMediaFile(f){ return isVideoFile(f) || isAudioFile(f); }
 function showVideoFrameOnly(){
+  $('mediaStage').classList.add('video-mode');
   $('mainImage').hidden=true;
   $('mainImage').style.display='none';
   $('videoFrame').hidden=false;
@@ -712,6 +699,7 @@ function showVideoFrameOnly(){
   video.hidden=false;
 }
 function showArtworkFrame(){
+  $('mediaStage').classList.remove('video-mode');
   $('videoFrame').hidden=true;
   $('videoFrame').style.display='none';
   video.hidden=true;
@@ -1730,16 +1718,7 @@ let mediaFiles=[];
   function open(id){
     q(id).classList.add('open');q(id).setAttribute('aria-hidden','false');
     if(id==='v352Media'){renderMedia();}
-    if(id==='v352Playlist'){
-      psel.clear();
-      renderPL();
-      requestAnimationFrame(()=>{
-        const list=q('v352PlaylistList');
-        const current=list?.querySelector('.v352-pl-row.current-track');
-        if(current) current.scrollIntoView({block:'center',inline:'nearest'});
-        else if(list) list.scrollTop=0;
-      });
-    }
+    if(id==='v352Playlist'){psel.clear();renderPL();}
     if(id==='v352Settings'){applyProf();updateMode();loadFolderMeta2();q('profileEditor').hidden=true}
   }
   function close(id){q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true')}
@@ -1817,6 +1796,7 @@ let mediaFiles=[];
       if(selectedIndex>=0){
         index=selectedIndex;
         try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+        psel.clear();
         renderPL();
         if(fileMap.has(playlist[index]?.id)){
           try{await loadCurrent(false);}catch(e){}
@@ -1933,27 +1913,30 @@ let mediaFiles=[];
   function renderPL(){
     const box=q('v352PlaylistList');
     box.innerHTML='';
-    if(!playlist.length){
-      box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어의 파일을 선택하세요.</div>';
-      updatePF(); return;
-    }
+    if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return;}
     playlist.forEach((t,i)=>{
       const row=document.createElement('div');
-      row.className='v352-pl-row'+(psel.has(t.id)?' sel':'')+(i===index?' current-track':'');
-      row.dataset.i=i; row.dataset.id=t.id;
+      row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');
+      row.dataset.i=i;
       const c=document.createElement('button');
       c.className='v352-check'+(psel.has(t.id)?' on':'');
       c.textContent=psel.has(t.id)?'✓':'';
       c.setAttribute('aria-label',(psel.has(t.id)?'선택 해제 ':'선택 ')+t.name);
-      c.onclick=e=>{e.stopPropagation();};
-      setupSelectSlide(c);
+      let suppressCheckClick=false;
+      c.onclick=e=>{
+        e.stopPropagation();
+        if(suppressCheckClick){suppressCheckClick=false;return;}
+        toggleP(t.id);
+      };
+      setupSelectSlide(c,()=>{suppressCheckClick=true;});
       const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');
       const info=document.createElement('div');info.className='v352-info';
       const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;
       const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');
       info.append(nm,su);
-      const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';d.setAttribute('aria-label','순서 변경');
+      const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';
       row.append(c,n,info,d);
+      // Tapping the track name/row (not the checkbox or drag handle) makes THIS track current.
       row.addEventListener('click',async e=>{
         if(e.target.closest('.v352-check')||e.target.closest('.v352-drag'))return;
         index=i;
@@ -1970,10 +1953,11 @@ let mediaFiles=[];
     });
     updatePF();
   }
-  function setupSelectSlide(check){
+  function setupSelectSlide(check,onPointerSelect){
     let active=false,seen=new Set();
     check.addEventListener('pointerdown',e=>{
       active=true;seen.clear();
+      onPointerSelect?.();
       const row=check.closest('.v352-pl-row');
       const id=playlist[Number(row?.dataset.i)]?.id;
       if(id){toggleP(id);seen.add(id);}
@@ -1993,29 +1977,6 @@ let mediaFiles=[];
   function setupSlide(row){let active=false,seen=new Set();row.addEventListener('pointerdown',e=>{if(e.target.closest('.v352-drag'))return;active=true;seen.clear();const id=playlist[+row.dataset.i]?.id;if(id){toggleP(id);seen.add(id)}row.setPointerCapture?.(e.pointerId);e.preventDefault()});row.addEventListener('pointermove',e=>{if(!active)return;const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(!r)return;const id=playlist[+r.dataset.i]?.id;if(id&&!seen.has(id)){toggleP(id);seen.add(id)}});['pointerup','pointercancel'].forEach(ev=>row.addEventListener(ev,()=>active=false))}
   function setupMove(row,handle){let active=false;handle.addEventListener('pointerdown',e=>{active=true;handle.setPointerCapture?.(e.pointerId);row.classList.add('dragging');e.preventDefault()});handle.addEventListener('pointermove',e=>{if(!active)return;document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(r&&r!==row)r.classList.add('drop')});handle.addEventListener('pointerup',e=>{if(!active)return;active=false;row.classList.remove('dragging');const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));if(r&&r!==row)moveGroup(+row.dataset.i,+r.dataset.i)});handle.addEventListener('pointercancel',()=>{active=false;row.classList.remove('dragging')})}
   function moveGroup(from,to){const ids=psel.size?[...psel]:[playlist[from]?.id];const moving=playlist.filter(t=>ids.includes(t.id));const rest=playlist.filter(t=>!ids.includes(t.id));const anchor=playlist[to];let at=rest.findIndex(t=>t.id===anchor?.id);if(at<0)at=rest.length;playlist=rest.slice(0,at).concat(moving,rest.slice(at));saveList();renderPL();toast2(moving.length+'개 항목의 순서를 변경했습니다.')}
-  function dedupePlaylist(){
-    if(playlist.length<2){toast2('중복된 곡이 없습니다.');return;}
-    const seen=new Map(),removeIds=new Set();
-    for(const t of playlist){
-      const key=[exactFileName(t.name),Number(t.size||0),t.path||''].join('|');
-      if(seen.has(key)){removeIds.add(t.id);}else seen.set(key,t.id);
-    }
-    if(!removeIds.size){toast2('중복된 곡이 없습니다.');return;}
-    const ok=confirm(`중복된 곡 ${removeIds.size}개를 찾았습니다.\n같은 파일은 하나만 남기고 재생목록에서 삭제할까요?\n\n원본 파일은 삭제하지 않습니다.`);
-    if(!ok)return;
-    const currentId=playlist[index]?.id;
-    const oldIndex=index;
-    playlist=playlist.filter(t=>!removeIds.has(t.id));
-    const newCurrent=playlist.findIndex(t=>t.id===currentId);
-    if(newCurrent>=0) index=newCurrent;
-    else index=Math.max(0,Math.min(oldIndex,playlist.length-1));
-    removeIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);psel.delete(id)});
-    saveList();
-    renderPL();renderStorageInfo();updateUI();
-    if(playlist.length)loadCurrent(false);else showDefaultScreen();
-    toast2(`중복 ${removeIds.size}개를 정리했습니다.`);
-  }
-  q('v352Dedupe').onclick=dedupePlaylist;
   q('v352Delete').onclick=()=>{
     if(!psel.size)return;
     if(!confirm('선택한 '+psel.size+'곡을 재생목록에서 삭제할까요?\n원본 파일은 삭제하지 않습니다.'))return;
