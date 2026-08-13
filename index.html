@@ -355,10 +355,6 @@ html,body{width:100%;overflow:hidden;}
 #v352Playlist .v352-note {
   flex:0 0 auto; width:100%; box-sizing:border-box;
 }
-
-#v390Diag.open{display:block!important;overflow:auto!important;}
-#v390Diag .v352-section{margin:10px 0;}
-#v390Diag code{background:#F3EEE9;border-radius:6px;padding:2px 4px;}
 </style>
 
 
@@ -417,11 +413,11 @@ html,body{width:100%;overflow:hidden;}
     <section class="v352-section">
       <div class="v352-section-title">📁 기본 미디어 폴더 <span class="settings-chevron">›</span></div>
       <div class="v352-folder"><div id="v352FolderPath" class="v352-path">아직 지정하지 않았습니다.</div><button id="v352ChooseFolder" class="v352-btn">📁 기본 미디어 폴더 선택</button></div>
-      <div class="v352-note">기본 미디어 폴더는 여기에서만 지정합니다. 새 파일은 재생목록에 자동으로 들어가지 않습니다.</div><button id="v390DiagOpen" class="v352-btn" style="margin-top:10px">🔎 기본 미디어 진단하기</button>
+      <div class="v352-note">기본 미디어 폴더는 여기에서만 지정합니다. 새 파일은 재생목록에 자동으로 들어가지 않습니다.</div>
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.90-DIAG</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.90</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -431,28 +427,6 @@ html,body{width:100%;overflow:hidden;}
     </div>
     <section class="v352-section">
       <div class="v352-section-title">🧹 초기화</div><button id="v352Reset" class="storage-delete">재생목록과 앱 설정 초기화</button>
-    </section>
-  </div>
-</div>
-<div id="v390Diag" class="v352-screen" aria-hidden="true">
-  <div class="v352-inner" style="max-width:720px">
-    <div class="v352-head"><button id="v390DiagBack" class="v352-close" aria-label="뒤로">‹</button><div class="v352-title" style="text-align:center;flex:1">기본 미디어 진단</div><span style="width:46px"></span></div>
-    <section class="v352-section">
-      <div class="v352-section-title">📁 저장된 기본 미디어 상태</div>
-      <div id="v390DiagSummary" class="v352-note" style="font-size:15px;white-space:pre-wrap;word-break:break-word">진단 중...</div>
-    </section>
-    <section class="v352-section">
-      <div class="v352-section-title">🧭 폴더 경로 정보</div>
-      <div id="v390DiagPaths" style="font-size:14px;line-height:1.55;word-break:break-word"></div>
-    </section>
-    <section class="v352-section">
-      <div class="v352-section-title">📄 실제 파일 예시</div>
-      <div id="v390DiagFiles" style="font-size:13px;line-height:1.6;word-break:break-word"></div>
-    </section>
-    <section class="v352-section">
-      <div class="v352-section-title">🧩 탐색기 생성 가능 여부</div>
-      <div id="v390DiagResult" style="font-size:17px;font-weight:900;line-height:1.6"></div>
-      <div class="v352-note">이 화면을 캡처해서 루카에게 보내주세요. 코드를 볼 필요 없습니다.</div>
     </section>
   </div>
 </div>
@@ -745,7 +719,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.90-DIAG';
+const APP_VERSION='V3.90';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1969,37 +1943,6 @@ let mediaFiles=[];
       if(row) row.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});
     }));
   }
-  async function runV390Diagnostic(){
-    const summary=q('v390DiagSummary'), pathsBox=q('v390DiagPaths'), filesBox=q('v390DiagFiles'), result=q('v390DiagResult');
-    summary.textContent='진단 중...'; pathsBox.innerHTML=''; filesBox.innerHTML=''; result.textContent='';
-    let cached=[]; try{cached=await loadCachedMediaFiles();}catch(e){}
-    let meta=null; try{meta=JSON.parse(localStorage.getItem(FM)||'null');}catch(e){}
-    let handle=null, handleInfo='없음';
-    try{handle=await loadMusicDirectoryHandle(); if(handle){let perm='확인 불가'; try{perm=await handle.queryPermission({mode:'read'});}catch(e){} handleInfo=`있음 / 이름: ${handle.name||'(이름 없음)'} / 권한: ${perm}`;}}catch(e){handleInfo='읽기 실패: '+(e?.message||e);}
-    const withPath=cached.filter(f=>String(f.webkitRelativePath||'').includes('/'));
-    const noPath=cached.filter(f=>!String(f.webkitRelativePath||'').includes('/'));
-    const roots=new Set(), folders=new Set();
-    for(const f of cached){const raw=String(f.webkitRelativePath||f.name||''); const parts=raw.split('/').filter(Boolean); if(parts.length>1){roots.add(parts[0]); for(let i=1;i<parts.length-1;i++) folders.add(parts.slice(0,i+1).join('/'));}}
-    summary.textContent=[
-      `파일 수: ${cached.length}개`,
-      `설정 메타: ${meta?JSON.stringify(meta):'없음'}`,
-      `저장된 폴더 핸들: ${handleInfo}`,
-      `경로 정보 있음: ${withPath.length}개`,
-      `경로 정보 없음: ${noPath.length}개`,
-      `최상위 경로 후보: ${[...roots].join(', ')||'없음'}`,
-      `하위 폴더 발견: ${folders.size}개`
-    ].join('\n');
-    if(!cached.length){ pathsBox.innerHTML='<b>저장된 파일이 없습니다.</b><br>설정에서 기본 미디어 폴더를 다시 선택해 주세요.'; }
-    else {
-      const samplePaths=[...new Set(cached.map(f=>String(f.webkitRelativePath||'(경로 없음)')))].slice(0,20);
-      pathsBox.innerHTML=samplePaths.map(x=>`• <code>${x.replaceAll('&','&amp;').replaceAll('<','&lt;')}</code>`).join('<br>');
-    }
-    const sample=cached.slice(0,12);
-    filesBox.innerHTML=sample.length?sample.map((f,i)=>`${i+1}. <b>${String(f.name).replaceAll('&','&amp;').replaceAll('<','&lt;')}</b> · ${formatBytes(f.size)} · <code>${String(f.webkitRelativePath||'(경로 없음)').replaceAll('&','&amp;').replaceAll('<','&lt;')}</code>`).join('<br>'):'없음';
-    const canExplorer=(cached.length>0 && withPath.length>0);
-    result.textContent=canExplorer?'✅ 탐색기 생성에 필요한 상대경로 정보가 있습니다.':'❌ 현재 저장된 파일에는 하위 폴더를 복원할 상대경로 정보가 없습니다.';
-    result.style.color=canExplorer?'#218451':'#B4472E';
-  }
   async function open(id){
     // V3.88: management screens are mutually exclusive. The playlist picker
     // must appear above/after the playlist screen instead of being painted
@@ -2041,19 +1984,19 @@ let mediaFiles=[];
   document.querySelectorAll('[data-v352-close]').forEach(b=>b.onclick=()=>close(b.dataset.v352Close));
   q('v352PlaylistPicker').querySelector('.picker-back').onclick=()=>{ if(pickerPath.length){pickerPath.pop(); renderPlaylistPicker();} else close('v352PlaylistPicker'); };
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
-  q('v390DiagOpen').onclick=async()=>{await open('v390Diag'); await runV390Diagnostic();};
-  q('v390DiagBack').onclick=()=>close('v390Diag');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
   // V3.88: 기본 미디어는 설정에서 폴더만 지정합니다. 별도의
   // "기본 미디어 보기" 화면은 재생목록 흐름에서 사용하지 않습니다.
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
-  q('v352OpenMedia').onclick=async()=>{
-    // V3.89: this button is ONLY the playlist-add explorer entry point.
-    // Never open the legacy flat media list. On iOS, request permission from
-    // the direct tap when a saved directory handle needs it, then recursively
-    // rebuild the folder tree before rendering.
-    await open('v352PlaylistPicker');
+  q('v352OpenMedia').onclick=()=>{
+    // V3.90: restore the V3.68 proven behavior ONLY for this button.
+    // The tap synchronously opens the native iOS Files picker.
+    psel.clear();
+    const picker=q('mediaFilesPicker');
+    if(!picker){ toast2('파일 선택기를 열 수 없습니다.'); return; }
+    picker.value='';
+    picker.click();
   };
   // Defensive cleanup: the playlist-add flow must never show the legacy
   // flat media-filter UI. If an older cached DOM is present, remove it.
@@ -2092,7 +2035,47 @@ let mediaFiles=[];
     setTimeout(focusAddedRow,120);
     toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`); updateUI();
   };
-  q('mediaFilesPicker').addEventListener('change',()=>{ /* reserved for legacy file import */ });
+  q('mediaFilesPicker').addEventListener('change',async e=>{
+    // V3.68 reference behavior: selected files are added immediately.
+    const selected=Array.from(e.target.files||[]).filter(isMediaFile);
+    e.target.value='';
+    if(!selected.length){ toast2('파일을 선택하지 않았습니다.'); return; }
+    const newItems=[];
+    for(const f of selected){
+      if(playlist.some(t=>fileEquivalent(t,f))) continue;
+      const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
+      playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
+      fileMap.set(id,f);
+      newItems.push(id);
+    }
+    if(!newItems.length){ toast2('선택한 곡은 이미 재생목록에 있습니다.'); return; }
+    saveList();
+    try{await cacheMediaFiles(selected,false);}catch(err){console.warn('cache selected media',err)}
+    mediaFiles = mediaFiles.concat(selected.filter(f=>!mediaFiles.some(x=>fileEquivalent({name:x.name,size:x.size,path:x.webkitRelativePath||x.name},f))));
+    close('v352PlaylistPicker');
+    q('v352Playlist').classList.add('open');
+    q('v352Playlist').setAttribute('aria-hidden','false');
+    psel.clear();
+    renderPL();
+    const focusAddedRow=()=>{
+      const box=q('v352PlaylistList');
+      const firstIndex=playlist.findIndex(t=>t.id===newItems[0]);
+      const row=box?.querySelector(`.v352-pl-row[data-i=\"${firstIndex}\"]`);
+      if(box && row){
+        const boxRect=box.getBoundingClientRect();
+        const rowRect=row.getBoundingClientRect();
+        const rowTop=rowRect.top-boxRect.top+box.scrollTop;
+        const target=Math.max(0,Math.min(box.scrollHeight-box.clientHeight,rowTop-Math.max(0,(box.clientHeight-row.offsetHeight)/2)));
+        box.scrollTop=target;
+      }
+      row?.classList.add('just-added');
+      setTimeout(()=>row?.classList.remove('just-added'),1800);
+    };
+    requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
+    setTimeout(focusAddedRow,120);
+    toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
+    updateUI();
+  });
   q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
   q('v352Name').oninput=e=>{prof.name=e.target.value;saveProf()}; q('v352Tagline').oninput=e=>{prof.tagline=e.target.value;saveProf()};
