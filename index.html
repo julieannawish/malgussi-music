@@ -743,7 +743,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.96';
+const APP_VERSION='V3.97';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1362,8 +1362,30 @@ async function reconnectSavedFolderForPlayback(){
 
 let appBootReady=Promise.resolve();
 
+async function ensurePlaybackReady(){
+  // V3.97: The first-screen controls must not depend on the user opening
+  // Playlist Management first. The playlist screen was previously calling
+  // ensurePlaylistSources(), which silently initialized fileMap. On a fresh
+  // launch the three main controls could therefore run before boot finished.
+  try{ await appBootReady; }catch(e){}
+  if(!playlist.length) return false;
+  if(fileMap.has(playlist[index]?.id)) return true;
+  try{
+    const cached=await loadCachedMediaFiles();
+    if(cached.length){
+      mediaFiles=cached;
+      relinkFromFolder(cached,false,true);
+      if(fileMap.has(playlist[index]?.id)) return true;
+    }
+  }catch(e){}
+  return !!fileMap.has(playlist[index]?.id);
+}
+
 async function stepTo(delta){
-  if(!playlist.length)return;
+  if(!(await ensurePlaybackReady())){
+    if(playlist.length) $('status').textContent='재생 파일을 준비하는 중입니다. 잠시 후 다시 눌러 주세요.';
+    return;
+  }
   const next=Math.max(0,Math.min(playlist.length-1,index+delta));
   if(next===index){
     // At the edge, do not silently wrap unless a repeat mode is explicitly active.
@@ -1390,6 +1412,7 @@ $('btnNext').onclick=async()=>{ await stepTo(1); };
 
 $('btnPlay').onclick=async()=>{
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
+  await ensurePlaybackReady();
   const f=fileMap.get(playlist[index]?.id);
   if(!f){
     const handle=await loadMusicDirectoryHandle();
