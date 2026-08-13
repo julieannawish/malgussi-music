@@ -2,13 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V382">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V383">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V3.82</title>
+<title>말구씨 음악 앱 · V3.83</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -385,12 +385,12 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">📁 기본 미디어 폴더 <span class="settings-chevron">›</span></div>
-      <div class="v352-folder"><div id="v352FolderPath" class="v352-path">아직 지정하지 않았습니다.</div><button id="v352ChooseFolder" class="v352-btn">📁 기본 미디어 폴더 선택</button><button id="v352OpenBaseMedia" class="v352-btn secondary-action">📂 기본 미디어 보기</button></div>
-      <div class="v352-note">기본 미디어는 설정에서만 확인합니다. 새 파일은 재생목록에 자동으로 들어가지 않습니다.</div>
+      <div class="v352-folder"><div id="v352FolderPath" class="v352-path">아직 지정하지 않았습니다.</div><button id="v352ChooseFolder" class="v352-btn">📁 기본 미디어 폴더 선택</button></div>
+      <div class="v352-note">기본 미디어 폴더는 여기에서만 지정합니다. 새 파일은 재생목록에 자동으로 들어가지 않습니다.</div>
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.82</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.83</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -691,7 +691,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.82';
+const APP_VERSION='V3.83';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1888,8 +1888,25 @@ let mediaFiles=[];
     }));
   }
   async function open(id){
+    // V3.83: management screens are mutually exclusive. The playlist picker
+    // must appear above/after the playlist screen instead of being painted
+    // underneath it. This was the reason tapping "＋ 추가" looked like
+    // nothing happened: v352Playlist stayed open at the same z-index.
+    document.querySelectorAll('.v352-screen.open').forEach(screen=>{
+      if(screen.id!==id){
+        screen.classList.remove('open');
+        screen.setAttribute('aria-hidden','true');
+      }
+    });
     q(id).classList.add('open');q(id).setAttribute('aria-hidden','false');
-    if(id==='v352Media'){renderMedia();}
+    if(id==='v352PlaylistPicker'){
+      pmsel.clear();
+      pfilter='all';
+      document.querySelectorAll('[data-plpicker-filter]').forEach(x=>x.classList.toggle('on',x.dataset.plpickerFilter==='all'));
+      await loadPlaylistPickerFiles();
+      renderPlaylistPicker();
+      updatePlaylistPickerSelectionUI();
+    }
     if(id==='v352Playlist'){
       psel.clear();
       await ensurePlaylistSources();
@@ -1898,20 +1915,27 @@ let mediaFiles=[];
     }
     if(id==='v352Settings'){applyProf();updateMode();loadFolderMeta2();q('profileEditor').hidden=true}
   }
-  function close(id){q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true')}
+  async function close(id){
+    q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true');
+    // V3.83: closing the add-file picker returns to playlist management.
+    // The previous version closed the picker while its parent playlist screen
+    // had already been hidden, leaving the user with a blank/underlying view.
+    if(id==='v352PlaylistPicker'){
+      await open('v352Playlist');
+    }
+  }
   window.openV352Playlist=()=>open('v352Playlist');
   document.querySelectorAll('[data-v352-close]').forEach(b=>b.onclick=()=>close(b.dataset.v352Close));
   q('btnSettings').onclick=()=>open('v352Settings'); q('btnPlaylist').onclick=()=>open('v352Playlist');
   q('settingsProfileCard').onclick=()=>{q('profileEditor').hidden=false;applyProf()}; q('profileBack').onclick=()=>{q('profileEditor').hidden=true}; q('profileSave').onclick=()=>{saveProf();q('profileEditor').hidden=true;toast2('프로필을 저장했습니다.')};
-  q('v352OpenBaseMedia').onclick=async()=>{
-    msel.clear(); updateMediaSelectionUI(); open('v352Media');
-    q('status').textContent='기본 미디어를 확인합니다.'; await loadMediaForPicker(true);
-  };
+  // V3.83: 기본 미디어는 설정에서 폴더만 지정합니다. 별도의
+  // "기본 미디어 보기" 화면은 재생목록 흐름에서 사용하지 않습니다.
+  const baseMediaViewBtn=q('v352OpenBaseMedia');
+  if(baseMediaViewBtn) baseMediaViewBtn.remove();
   q('v352OpenMedia').onclick=async()=>{
-    pmsel.clear(); pfilter='all';
-    document.querySelectorAll('[data-plpicker-filter]').forEach(x=>x.classList.toggle('on',x.dataset.plpickerFilter==='all'));
-    open('v352PlaylistPicker'); q('status').textContent='재생목록에 추가할 곡을 선택하세요.';
-    await loadPlaylistPickerFiles(); renderPlaylistPicker();
+    q('status').textContent='재생목록에 추가할 파일을 불러오는 중입니다…';
+    await open('v352PlaylistPicker');
+    q('status').textContent='재생목록에 추가할 곡을 선택하세요.';
   };
   q('v352PlaylistPickerAdd').onclick=async()=>{
     const selected=playlistPickerFiles.filter(f=>pmsel.has(idForFile(f)));
