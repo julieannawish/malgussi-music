@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V371">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V375">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -202,7 +202,7 @@ input[type=file]{display:none}
 
 .v352-pl-row{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:64px;touch-action:none;user-select:none}.v352-pl-row.sel{background:#F4E8DC;border:2px solid #8B664A}.v352-pl-row.dragging{opacity:.5}.v352-pl-row.drop{border:2px dashed #2457A6;background:#EEF5FF}.v352-num{width:28px;text-align:center;color:#665D58;font-weight:900}.v352-drag{width:38px;height:44px;border-radius:10px;background:#F2F2F2;color:#777;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:900;touch-action:none}.v352-pl-footer{display:flex;align-items:center;gap:10px;margin:12px 0}.v352-pl-footer .storage-delete{margin:0;flex:1}.v352-empty{text-align:center;color:#665D58;background:#fff;border:1px solid #E8DED6;border-radius:16px;padding:35px 15px;line-height:1.6}.v352-row{touch-action:none}
 
-.topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
+.topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn.duplicate{background:#FFF7E8;color:#8A5A16;border-color:#E6C98A}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
 
 /* V3.70: responsive full-screen player + fixed playlist header/mode */
 html,body{min-height:100%;}
@@ -382,7 +382,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.74</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.76</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -409,7 +409,7 @@ html,body{width:100%;overflow:hidden;}
     <div class="v352-head"><div class="v352-title">☰♫ 재생목록 관리</div><button class="v352-close" data-v352-close="v352Playlist">×</button></div>
     <section class="v352-section"><div class="v352-section-title">재생 방식</div><div class="v352-mode"><button data-v352-mode="none">반복 안 함</button><button data-v352-mode="order">순서 반복</button><button data-v352-mode="random">랜덤 반복</button><button data-v352-mode="one">한 곡 반복</button></div></section>
     <div id="v352PlaylistList"></div>
-    <div class="v352-pl-footer"><span id="v352SelectedCount">선택 0개</span><div class="pl-actions"><button id="v352OpenMedia" class="pl-icon-btn add" aria-label="추가"><span>＋</span><small>추가</small></button><button id="v352Delete" class="pl-icon-btn delete" disabled aria-label="삭제"><span>🗑</span><small>삭제</small></button></div></div>
+    <div class="v352-pl-footer"><span id="v352SelectedCount">선택 0개</span><div class="pl-actions"><button id="v352OpenMedia" class="pl-icon-btn add" aria-label="추가"><span>＋</span><small>추가</small></button><button id="v352Delete" class="pl-icon-btn delete" disabled aria-label="삭제"><span>🗑</span><small>삭제</small></button><button id="v352Deduplicate" class="pl-icon-btn duplicate" disabled aria-label="중복 삭제"><span>⧉</span><small>중복 삭제</small></button></div></div>
     <div class="v352-note">● 여러 곡을 손가락으로 연속 선택할 수 있습니다.<br>≡ 선택한 곡은 드래그하여 묶음으로 순서를 바꿀 수 있습니다.<br>원본 파일은 삭제하지 않습니다.</div>
   </div>
 </div>
@@ -672,7 +672,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.74';
+const APP_VERSION='V3.76';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1762,10 +1762,44 @@ let mediaFiles=[];
   const q=id=>document.getElementById(id);
   function saveProf(){localStorage.setItem(K,JSON.stringify(prof));window.v352ProfileImage=prof.image||'profile_default.png';applyProf()}
   function applyProf(){window.v352ProfileImage=prof.image||'profile_default.png';q('v352Name').value=prof.name||'';q('v352Tagline').value=prof.tagline||'';q('v352ProfilePreview').src=prof.image||'profile_default.png';document.querySelector('h1').textContent='🎵 '+(prof.name||'말구씨 음악');document.querySelector('.sub').textContent=prof.tagline||'내 음악을 편하게 듣는 작은 음악상자'}
-  function open(id){
+  async function ensurePlaylistSources(){
+    if(!playlist.length || playlist.every(t=>fileMap.has(t.id))) return true;
+    try{
+      const cached=await loadCachedMediaFiles();
+      if(cached.length){
+        mediaFiles=cached;
+        relinkFromFolder(cached,false);
+        if(playlist.every(t=>fileMap.has(t.id))) return true;
+      }
+    }catch(e){}
+    try{
+      const h=await loadMusicDirectoryHandle();
+      if(h){
+        let perm='denied';
+        try{perm=await h.queryPermission({mode:'read'});}catch(e){}
+        if(perm==='granted'){
+          const fs=[];
+          for await(const entry of h.values()){
+            if(entry.kind==='file'){const f=await entry.getFile();if(isMediaFile(f))fs.push(f);}
+          }
+          if(fs.length){
+            await cacheMediaFiles(fs);
+            relinkFromFolder(fs,false);
+            if(playlist.every(t=>fileMap.has(t.id))) return true;
+          }
+        }
+      }
+    }catch(e){}
+    return playlist.every(t=>fileMap.has(t.id));
+  }
+  async function open(id){
     q(id).classList.add('open');q(id).setAttribute('aria-hidden','false');
     if(id==='v352Media'){renderMedia();}
-    if(id==='v352Playlist'){psel.clear();renderPL();}
+    if(id==='v352Playlist'){
+      psel.clear();
+      await ensurePlaylistSources();
+      renderPL();
+    }
     if(id==='v352Settings'){applyProf();updateMode();loadFolderMeta2();q('profileEditor').hidden=true}
   }
   function close(id){q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true')}
@@ -2020,9 +2054,72 @@ let mediaFiles=[];
     ['pointerup','pointercancel'].forEach(ev=>check.addEventListener(ev,()=>active=false));
   }
   function toggleP(id){psel.has(id)?psel.delete(id):psel.add(id);renderPL()}
-  function updatePF(){q('v352SelectedCount').textContent='선택 '+psel.size+'개';q('v352Delete').disabled=!psel.size;q('v352Delete').style.opacity=psel.size?1:.5}
+  function duplicateGroups(){
+    const seen=new Map(), dup=new Set();
+    for(const t of playlist){
+      const key=exactFileName(t.name)+'|'+Number(t.size||0);
+      if(seen.has(key)) dup.add(t.id); else seen.set(key,t.id);
+    }
+    return dup;
+  }
+  function updatePF(){
+    q('v352SelectedCount').textContent='선택 '+psel.size+'개';
+    q('v352Delete').disabled=!psel.size;
+    q('v352Delete').style.opacity=psel.size?1:.5;
+    const dupCount=duplicateGroups().size;
+    const db=q('v352Deduplicate');
+    if(db){db.disabled=dupCount===0;db.style.opacity=dupCount?1:.5;db.title=dupCount?`중복 ${dupCount}곡을 삭제합니다.`:'중복된 곡이 없습니다.';}
+  }
   function setupSlide(row){let active=false,seen=new Set();row.addEventListener('pointerdown',e=>{if(e.target.closest('.v352-drag'))return;active=true;seen.clear();const id=playlist[+row.dataset.i]?.id;if(id){toggleP(id);seen.add(id)}row.setPointerCapture?.(e.pointerId);e.preventDefault()});row.addEventListener('pointermove',e=>{if(!active)return;const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(!r)return;const id=playlist[+r.dataset.i]?.id;if(id&&!seen.has(id)){toggleP(id);seen.add(id)}});['pointerup','pointercancel'].forEach(ev=>row.addEventListener(ev,()=>active=false))}
-  function setupMove(row,handle){let active=false;handle.addEventListener('pointerdown',e=>{active=true;handle.setPointerCapture?.(e.pointerId);row.classList.add('dragging');e.preventDefault()});handle.addEventListener('pointermove',e=>{if(!active)return;document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(r&&r!==row)r.classList.add('drop')});handle.addEventListener('pointerup',e=>{if(!active)return;active=false;row.classList.remove('dragging');const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));if(r&&r!==row)moveGroup(+row.dataset.i,+r.dataset.i)});handle.addEventListener('pointercancel',()=>{active=false;row.classList.remove('dragging')})}
+  function setupMove(row,handle){
+    // Right-side ≡ has two intentional gestures:
+    // 1) quick swipe: select rows as a group (same result as checking the radio button)
+    // 2) long-press, then drag: move the currently selected group as one block
+    let active=false, mode=null, timer=null, startX=0, startY=0, seen=new Set();
+    const clearTimer=()=>{if(timer){clearTimeout(timer);timer=null;}};
+    const rowAt=(x,y)=>document.elementFromPoint(x,y)?.closest('.v352-pl-row');
+    const selectRow=(r)=>{const i=Number(r?.dataset.i);const id=playlist[i]?.id;if(id&&!seen.has(id)){psel.add(id);seen.add(id);renderPL();}};
+    handle.addEventListener('pointerdown',e=>{
+      active=true;mode='pending';startX=e.clientX;startY=e.clientY;seen=new Set();
+      try{handle.setPointerCapture?.(e.pointerId);}catch(err){}
+      const r=rowAt(e.clientX,e.clientY); if(r) selectRow(r);
+      timer=setTimeout(()=>{
+        if(!active)return;
+        mode='move';
+        row.classList.add('dragging');
+      },350);
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove',e=>{
+      if(!active)return;
+      const dx=Math.abs(e.clientX-startX),dy=Math.abs(e.clientY-startY);
+      if(mode==='pending' && (dx>8||dy>8)){
+        clearTimer(); mode='select';
+      }
+      const r=rowAt(e.clientX,e.clientY);
+      if(!r)return;
+      if(mode==='select' || mode==='pending'){
+        selectRow(r);
+        return;
+      }
+      if(mode==='move'){
+        document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));
+        if(r!==row && !psel.has(playlist[Number(r.dataset.i)]?.id)) r.classList.add('drop');
+      }
+    });
+    const finish=e=>{
+      if(!active)return;
+      clearTimer();
+      const wasMove=mode==='move';
+      active=false;mode=null;row.classList.remove('dragging');
+      const r=rowAt(e.clientX,e.clientY);
+      document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));
+      if(wasMove && r && r!==row && !psel.has(playlist[Number(r.dataset.i)]?.id)) moveGroup(+row.dataset.i,+r.dataset.i);
+      else if(!wasMove) updatePF();
+    };
+    handle.addEventListener('pointerup',finish);
+    handle.addEventListener('pointercancel',e=>{clearTimer();active=false;mode=null;row.classList.remove('dragging');document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));});
+  }
   function moveGroup(from,to){const ids=psel.size?[...psel]:[playlist[from]?.id];const moving=playlist.filter(t=>ids.includes(t.id));const rest=playlist.filter(t=>!ids.includes(t.id));const anchor=playlist[to];let at=rest.findIndex(t=>t.id===anchor?.id);if(at<0)at=rest.length;playlist=rest.slice(0,at).concat(moving,rest.slice(at));saveList();renderPL();toast2(moving.length+'개 항목의 순서를 변경했습니다.')}
   q('v352Delete').onclick=()=>{
     if(!psel.size)return;
@@ -2041,6 +2138,22 @@ let mediaFiles=[];
       if(playlist.length)loadCurrent(false);else showDefaultScreen();
     }
     renderPL();renderStorageInfo();updateUI();
+  };
+  q('v352Deduplicate').onclick=()=>{
+    const dupIds=duplicateGroups();
+    if(!dupIds.size){toast2('중복된 곡이 없습니다.');return;}
+    if(!confirm(`중복된 ${dupIds.size}곡을 재생목록에서 삭제할까요?\n같은 이름과 파일 크기가 같은 항목 중 첫 번째 곡은 남깁니다.\n원본 파일은 삭제하지 않습니다.`))return;
+    const currentId=playlist[index]?.id;
+    const removedBefore=[...dupIds].filter(id=>{const pos=playlist.findIndex(t=>t.id===id);return pos>=0&&pos<index}).length;
+    playlist=playlist.filter(t=>!dupIds.has(t.id));
+    dupIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);});
+    psel.clear();
+    index=Math.max(0,index-removedBefore);
+    if(index>=playlist.length)index=Math.max(0,playlist.length-1);
+    saveList();
+    if(currentId&&dupIds.has(currentId)){if(playlist.length)loadCurrent(false);else showDefaultScreen();}
+    renderPL();renderStorageInfo();updateUI();
+    toast2(`중복 ${dupIds.size}곡을 삭제했습니다.`);
   };
   q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);playlist=[];fileMap.clear();mediaFiles=[];psel.clear();msel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
   async function bootMalgussi(){
