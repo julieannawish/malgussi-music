@@ -441,7 +441,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.92</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.94</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -743,7 +743,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.92';
+const APP_VERSION='V3.94';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -819,7 +819,11 @@ function setMediaSource(f){
   if(isVideoFile(f)){
     activeMedia=video;
     video.src=objectUrl;
+    video.controls=false;
+    video.removeAttribute('controls');
+    video.autoplay=false;
     showVideoFrameOnly();
+    const rb=$('videoRunBtn'); if(rb) rb.classList.remove('show');
     video.load();
     updatePiPButton();
   }else{
@@ -1198,12 +1202,11 @@ async function playActiveMedia(fromUserGesture=false){
     });
     if(!actuallyPlaying) throw new Error('media did not enter playing state');
     if(m===video){
-      // Keep the in-frame 실행 affordance visible, but the OUTSIDE player
-      // control must reflect the real video state: it is now playing, so the
-      // outside button must show 잠시멈춤.
+      // While video is playing, the in-frame 실행 overlay must disappear.
+      // The outside player control is the single pause/play control.
       activeMedia=video;
       const rb=$('videoRunBtn');
-      if(rb) rb.classList.add('show');
+      if(rb) rb.classList.remove('show');
     }
     setMediaSessionState('playing');
     updateUI();
@@ -1222,7 +1225,7 @@ async function playActiveMedia(fromUserGesture=false){
     return false;
   }
 }
-async function loadCurrent(autoplay,fromUserGesture=false){
+async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   if(!playlist.length){updateUI();return}
   index=Math.max(0,Math.min(index,playlist.length-1));
   try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
@@ -1270,14 +1273,17 @@ async function loadCurrent(autoplay,fromUserGesture=false){
     currentArtwork=artworkMap.get(t.id);
   }else{
     currentArtwork=getCachedArtwork(t.id);
-    if(!currentArtwork){
+    // First-screen boot must not be held up by large MP3/MP4 artwork parsing.
+    // Artwork is a presentation enhancement; source connection and transport
+    // controls must become ready first.
+    if(!currentArtwork && !fastBoot){
       currentArtwork=await extractArtwork(f);
       if(currentArtwork) cacheArtworkForTrack(t.id,currentArtwork);
     }
     if(currentArtwork) artworkMap.set(t.id,currentArtwork);
   }
 
-  if(isVideoFile(f) && !currentArtwork){
+  if(isVideoFile(f) && !currentArtwork && !fastBoot){
     const frame=await videoFirstFrame(f);
     if(frame){
       try{const bin=atob(frame.split(',')[1]||'');const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);currentArtwork={mime:'image/jpeg',bytes};cacheArtworkForTrack(t.id,currentArtwork);artworkMap.set(t.id,currentArtwork);}catch(e){}
@@ -1304,16 +1310,23 @@ async function loadCurrent(autoplay,fromUserGesture=false){
   activeMedia.load();
   let playSucceeded=false;
   if(isVideoFile(f)){
-    // MP4: enter the video frame and attempt immediate autoplay. On iOS/Safari
-    // a soundful autoplay may be blocked; fall back to muted autoplay so the
-    // video still starts visually. A later user tap can restore sound.
-    playSucceeded=await playActiveMedia(fromUserGesture);
-    if(!playSucceeded && !fromUserGesture){
-      try{
-        video.muted=true;
-        video.volume=0;
-        playSucceeded=await playActiveMedia(false);
-      }catch(e){}
+    // IMPORTANT: merely loading/relinking a playlist item must NOT start MP4.
+    // Only an explicit autoplay request (for example, returning to the main
+    // screen after the user closes playlist management) may start playback.
+    if(autoplay){
+      playSucceeded=await playActiveMedia(fromUserGesture);
+      if(!playSucceeded && !fromUserGesture){
+        try{
+          video.muted=true;
+          video.volume=0;
+          playSucceeded=await playActiveMedia(false);
+        }catch(e){}
+      }
+    }else{
+      video.pause();
+      const rb=$('videoRunBtn');
+      if(rb) rb.classList.remove('show');
+      setMediaSessionState('paused');
     }
   }else if(autoplay){
     playSucceeded=await playActiveMedia(fromUserGesture);
@@ -1748,6 +1761,7 @@ video.addEventListener('loadedmetadata',syncMediaUI);
 audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
 video.addEventListener('play',()=>{
+  video.controls=false; video.removeAttribute('controls');
   activeMedia=video;
   setMediaSessionState('playing');
   updateUI();
@@ -1831,8 +1845,14 @@ async function advanceAfterEnd(){
 }
 audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
 audio.addEventListener('pause',()=>{setMediaSessionState('paused');});
-video.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
-video.addEventListener('pause',()=>{setMediaSessionState('paused');});
+video.addEventListener('play',()=>{
+  const rb=$('videoRunBtn'); if(rb) rb.classList.remove('show');
+  refreshMediaSessionForPlayback(); updatePiPButton(); updateUI();
+});
+video.addEventListener('pause',()=>{
+  const rb=$('videoRunBtn'); if(rb) rb.classList.add('show');
+  setMediaSessionState('paused'); updateUI();
+});
 audio.addEventListener('ended',advanceAfterEnd);
 video.addEventListener('ended',advanceAfterEnd);
 $('seekBar').addEventListener('input',e=>{
@@ -1907,7 +1927,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=388',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=394',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1941,7 +1961,8 @@ let mediaFiles=[];
   let prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};
   try{prof={...prof,...JSON.parse(localStorage.getItem(K)||'{}')}}catch(e){}
   let vmode=localStorage.getItem(MK)||'none';
-  if(!localStorage.getItem(MK)) localStorage.setItem(MK,'none');
+  if(!['none','order','random','one'].includes(vmode)) vmode='none';
+  localStorage.setItem(MK,vmode);
   let mfilter='all', msel=new Set(), psel=new Set(), pfilter='all', pmsel=new Set(), playlistPickerFiles=[], pickerRootName='', pickerPath=[];
   const q=id=>document.getElementById(id);
   function saveProf(){localStorage.setItem(K,JSON.stringify(prof));window.v352ProfileImage=prof.image||'profile_default.png';applyProf()}
@@ -2033,6 +2054,11 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
+      // Playlist management is a management screen, not a playback screen.
+      // Stop any active media before source relinking so relink/loadCurrent(false)
+      // cannot leave an MP4 running while the playlist UI is open.
+      try{ if(activeMedia) activeMedia.pause(); }catch(e){}
+      setMediaSessionState('paused');
       psel.clear();
       await ensurePlaylistSources();
       renderPL();
@@ -2042,11 +2068,19 @@ let mediaFiles=[];
   }
   async function close(id){
     q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true');
-    // V3.88: closing the add-file picker returns to playlist management.
-    // The previous version closed the picker while its parent playlist screen
-    // had already been hidden, leaving the user with a blank/underlying view.
+    // Closing the add-file picker returns to playlist management.
     if(id==='v352PlaylistPicker'){
       await open('v352Playlist');
+      return;
+    }
+    // Returning from playlist management is the explicit user action that may
+    // start the current MP4. Merely opening playlist management must never
+    // trigger playback.
+    if(id==='v352Playlist'){
+      const f=fileMap.get(playlist[index]?.id);
+      if(f && isVideoFile(f)){
+        try{ await loadCurrent(true,true); }catch(e){}
+      }
     }
   }
   window.openV352Playlist=()=>open('v352Playlist');
@@ -2059,7 +2093,7 @@ let mediaFiles=[];
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
   q('v352OpenMedia').onclick=()=>{
-    // V3.92: restore the V3.68 proven behavior ONLY for this button.
+    // V3.93: restore the V3.68 proven behavior ONLY for this button.
     // The tap synchronously opens the native iOS Files picker.
     psel.clear();
     const picker=q('mediaFilesPicker');
@@ -2606,10 +2640,10 @@ let mediaFiles=[];
         }
         if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files,true);}
       }
-      if(playlist.length) await loadCurrent(false);
+      if(playlist.length) await loadCurrent(false,false,true);
       else updateUI();
     }catch(e){
-      if(playlist.length) await loadCurrent(false);
+      if(playlist.length) await loadCurrent(false,false,true);
       else updateUI();
     }
   }
