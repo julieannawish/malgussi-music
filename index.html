@@ -1084,6 +1084,52 @@ $('folderFiles').addEventListener('change',async e=>{
   e.target.value='';
 });
 
+async function waitForVideoReady(timeoutMs=2500){
+  if(video.readyState>=3) return true;
+  return await new Promise(resolve=>{
+    let done=false;
+    const finish=ok=>{if(done)return;done=true;clearTimeout(timer);video.removeEventListener('canplay',onReady);video.removeEventListener('loadeddata',onReady);resolve(ok)};
+    const onReady=()=>finish(video.readyState>=2);
+    const timer=setTimeout(()=>finish(video.readyState>=2),timeoutMs);
+    video.addEventListener('canplay',onReady,{once:true});
+    video.addEventListener('loadeddata',onReady,{once:true});
+  });
+}
+
+async function playActiveMedia(fromUserGesture=false){
+  const m=activeMedia||audio;
+  if(!m || !m.src) return false;
+  try{
+    if(m===video){
+      // Keep the video element explicitly inline on iPhone and ask Safari to
+      // begin playback as soon as the media is ready.  Do not update the app
+      // button until play() actually succeeds.
+      video.playsInline=true;
+      video.setAttribute('playsinline','');
+      video.setAttribute('webkit-playsinline','');
+      video.autoplay=!!fromUserGesture;
+      await waitForVideoReady();
+    }
+    await m.play();
+    // Safari can resolve play() before the first frame advances. Give it one
+    // short tick, then verify the actual paused state instead of trusting UI.
+    await new Promise(r=>setTimeout(r,120));
+    const ok=!m.paused && !m.ended;
+    if(!ok) throw new Error('media did not enter playing state');
+    setMediaSessionState('playing');
+    updateUI();
+    return true;
+  }catch(e){
+    if(m===video){
+      video.autoplay=false;
+      $('status').textContent='동영상이 자동 재생되지 않았습니다. 아래 재생 버튼을 눌러 주세요.';
+    }
+    setMediaSessionState('paused');
+    updateUI();
+    return false;
+  }
+}
+
 async function loadCurrent(autoplay){
   if(!playlist.length){updateUI();return}
   index=Math.max(0,Math.min(index,playlist.length-1));
@@ -1166,17 +1212,7 @@ async function loadCurrent(autoplay){
   activeMedia.load();
   let playSucceeded=false;
   if(autoplay){
-    try{
-      // The play promise is the source of truth. Never show the pause state
-      // unless the browser actually accepted playback.
-      await activeMedia.play();
-      playSucceeded=true;
-    }catch(e){
-      playSucceeded=false;
-      if(activeMedia===video){
-        $('status').textContent='동영상을 재생할 준비가 되었습니다. 재생 버튼을 눌러 주세요.';
-      }
-    }
+    playSucceeded=await playActiveMedia(true);
   }
   if(playSucceeded) $('status').textContent='';
   updateMediaSessionMetadata(currentArtwork);
@@ -1258,8 +1294,18 @@ $('btnPlay').onclick=async()=>{
     return;
   }
   const m=activeMedia||audio;
-  if(m.paused){try{await m.play();setMediaSessionState('playing')}catch(e){}}else{m.pause();setMediaSessionState('paused')}
-  updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id)); updateUI();
+  if(m.paused){
+    // IMPORTANT: when the user taps the app button, call play() directly from
+    // this gesture before any await/permission flow can consume iOS user
+    // activation. This is especially important for MP4 with audio.
+    const ok=await playActiveMedia(true);
+    if(ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
+  }else{
+    m.pause();
+    setMediaSessionState('paused');
+    updateUI();
+  }
+  updateUI();
 };
 // V3.54: initial screen no longer exposes a direct file-import button.
 
@@ -1626,7 +1672,7 @@ video.addEventListener('loadedmetadata',()=>{
 });
 video.addEventListener('canplay',()=>{
   fitVideoFrameNoCrop();
-  if(activeMedia===video) $('status').textContent='동영상 재생 준비 완료';
+  if(activeMedia===video && video.paused) $('status').textContent='동영상 재생 준비 완료';
 });
 video.addEventListener('webkitpresentationmodechanged',updatePiPButton);
 document.addEventListener('enterpictureinpicture',updatePiPButton);
@@ -1737,7 +1783,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=378',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=379',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
