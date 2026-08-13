@@ -2,13 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V375">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V380">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱</title>
+<title>말구씨 음악 앱 · V3.80</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -382,7 +382,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.78</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.80</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -518,12 +518,12 @@ function setupMediaSessionHandlers(){
   safe('previoustrack',()=>{
     if(!playlist.length)return;
     index=(index-1+playlist.length)%playlist.length;
-    loadCurrent(true);
+    loadCurrent(true,true);
   });
   safe('nexttrack',()=>{
     if(!playlist.length)return;
     index=(index+1)%playlist.length;
-    loadCurrent(true);
+    loadCurrent(true,true);
   });
 }
 
@@ -672,7 +672,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.78';
+const APP_VERSION='V3.80';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1059,7 +1059,7 @@ async function addFiles(files){
 
   $('status').textContent=`${added}곡 추가 · ${relinked}곡 원본 연결 완료`;
   if(playlist.length && fileMap.has(playlist[index]?.id)){
-    await loadCurrent(true);
+    await loadCurrent(false);
   }
 }
 
@@ -1101,36 +1101,46 @@ async function playActiveMedia(fromUserGesture=false){
   if(!m || !m.src) return false;
   try{
     if(m===video){
-      // Keep the video element explicitly inline on iPhone and ask Safari to
-      // begin playback as soon as the media is ready.  Do not update the app
-      // button until play() actually succeeds.
       video.playsInline=true;
       video.setAttribute('playsinline','');
       video.setAttribute('webkit-playsinline','');
       video.autoplay=!!fromUserGesture;
-      await waitForVideoReady();
     }
-    await m.play();
-    // Safari can resolve play() before the first frame advances. Give it one
-    // short tick, then verify the actual paused state instead of trusting UI.
-    await new Promise(r=>setTimeout(r,120));
-    const ok=!m.paused && !m.ended;
-    if(!ok) throw new Error('media did not enter playing state');
+    // Call play() immediately. Waiting for canplay first can consume iOS Safari's
+    // transient user activation and make the first MP4 remain at 00:00.
+    const playPromise=m.play();
+    if(playPromise && typeof playPromise.then==='function') await playPromise;
+    const actuallyPlaying=await new Promise(resolve=>{
+      if(m.ended || m.paused){ resolve(false); return; }
+      let done=false,timer=null,startTime=Number(m.currentTime)||0;
+      const finish=ok=>{if(done)return;done=true;clearTimeout(timer);m.removeEventListener('playing',onPlaying);m.removeEventListener('timeupdate',onTime);m.removeEventListener('pause',onPause);m.removeEventListener('ended',onEnded);resolve(ok)};
+      const onPlaying=()=>finish(true);
+      const onTime=()=>{if((Number(m.currentTime)||0)>startTime+0.02) finish(true)};
+      const onPause=()=>finish(false);
+      const onEnded=()=>finish(false);
+      m.addEventListener('playing',onPlaying,{once:true});
+      m.addEventListener('timeupdate',onTime);
+      m.addEventListener('pause',onPause,{once:true});
+      m.addEventListener('ended',onEnded,{once:true});
+      timer=setTimeout(()=>finish(!m.paused && !m.ended),1200);
+    });
+    if(!actuallyPlaying) throw new Error('media did not enter playing state');
     setMediaSessionState('playing');
     updateUI();
     return true;
   }catch(e){
     if(m===video){
       video.autoplay=false;
-      $('status').textContent='동영상이 자동 재생되지 않았습니다. 아래 재생 버튼을 눌러 주세요.';
+      $('status').textContent=fromUserGesture
+        ?'동영상을 재생하지 못했습니다. 다시 재생 버튼을 눌러 주세요.'
+        :'동영상 자동재생이 제한되었습니다. 재생 버튼을 눌러 주세요.';
     }
     setMediaSessionState('paused');
     updateUI();
     return false;
   }
 }
-
-async function loadCurrent(autoplay){
+async function loadCurrent(autoplay,fromUserGesture=false){
   if(!playlist.length){updateUI();return}
   index=Math.max(0,Math.min(index,playlist.length-1));
   try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
@@ -1212,7 +1222,7 @@ async function loadCurrent(autoplay){
   activeMedia.load();
   let playSucceeded=false;
   if(autoplay){
-    playSucceeded=await playActiveMedia(true);
+    playSucceeded=await playActiveMedia(fromUserGesture);
   }
   if(playSucceeded) $('status').textContent='';
   updateMediaSessionMetadata(currentArtwork);
@@ -1264,7 +1274,7 @@ async function stepTo(delta){
       return;
     }
   }
-  await loadCurrent(true);
+  await loadCurrent(true,true);
 }
 $('btnPrev').onclick=()=>stepTo(-1);
 $('btnNext').onclick=()=>stepTo(1);
@@ -1284,7 +1294,7 @@ $('btnPlay').onclick=async()=>{
           if(files.length){
             await relinkFromFolder(files);
             const refreshed=fileMap.get(playlist[index]?.id);
-            if(refreshed){ await loadCurrent(true); return; }
+            if(refreshed){ await loadCurrent(true,true); return; }
           }
         }
       }catch(e){}
@@ -1346,12 +1356,12 @@ function renderPlaylist(){
       if(!fileMap.has(t.id)){
         if(await canUseSavedMusicDirectory()){
           await relinkFolder();
-          if(fileMap.has(t.id)){ await loadCurrent(true); closePlaylist(); return; }
+          if(fileMap.has(t.id)){ await loadCurrent(true,true); closePlaylist(); return; }
         }
         $('status').textContent='이 음악의 원본을 찾을 수 없습니다. 재생목록 관리에서 [음악 폴더 지정]을 눌러 주세요.';
         return;
       }
-      await loadCurrent(true);
+      await loadCurrent(true,true);
       closePlaylist();
     };
 
@@ -1783,7 +1793,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=379',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=380',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1850,6 +1860,14 @@ let mediaFiles=[];
     }catch(e){}
     return playlist.every(t=>fileMap.has(t.id));
   }
+  function scrollPlaylistToCurrent(){
+    const box=q('v352PlaylistList');
+    if(!box || !playlist.length) return;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const row=box.querySelector(`.v352-pl-row[data-i="${index}"]`);
+      if(row) row.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});
+    }));
+  }
   async function open(id){
     q(id).classList.add('open');q(id).setAttribute('aria-hidden','false');
     if(id==='v352Media'){renderMedia();}
@@ -1857,6 +1875,7 @@ let mediaFiles=[];
       psel.clear();
       await ensurePlaylistSources();
       renderPL();
+      scrollPlaylistToCurrent();
     }
     if(id==='v352Settings'){applyProf();updateMode();loadFolderMeta2();q('profileEditor').hidden=true}
   }
@@ -2091,7 +2110,7 @@ let mediaFiles=[];
           const ok=await reconnectSavedFolderForPlayback();
           if(!ok){q('status').textContent='이 곡의 원본 파일을 연결할 수 없습니다.';return;}
         }
-        await loadCurrent(true);
+        await loadCurrent(true,true);
         close('v352Playlist');
       });
       setupMove(row,d);
