@@ -253,11 +253,25 @@ html,body{width:100%;overflow:hidden;}
 .card > .menu{margin-top:4px;}
 
 
-/* V3.73: MP4 media fills the media frame instead of leaving large black bars.
-   The media stage remains bounded so the bottom controls stay visible. */
-.media-stage.video-mode{background:#000;}
-.media-stage.video-mode .video-frame{background:#000;}
-.media-stage.video-mode .video-player{object-fit:cover;object-position:center center;}
+/* V3.74: MP4 never crops. Size the frame to the video's native aspect ratio
+   and fit it to the largest rectangle available inside the media stage. */
+.media-stage.video-mode{background:#111;}
+.media-stage.video-mode .video-frame{
+  background:#111;
+  width:auto;
+  height:auto;
+  aspect-ratio:auto;
+  flex:0 0 auto;
+}
+.media-stage.video-mode .video-player{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center center;
+  background:#111;
+}
+.video-frame.video-fitted{max-width:100%;max-height:100%;}
+
 
 /* V3.70: playlist screen layout fix - keep header/mode fixed and make only the list scroll. */
 #v352Playlist {
@@ -368,7 +382,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.70</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.74</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -658,7 +672,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.73';
+const APP_VERSION='V3.74';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -691,6 +705,11 @@ function isVideoFile(f){
 }
 function isMediaFile(f){ return isVideoFile(f) || isAudioFile(f); }
 function showVideoFrameOnly(){
+  const frame=$('videoFrame');
+  frame.style.width='';
+  frame.style.height='';
+  frame.style.aspectRatio='';
+  frame.classList.remove('video-fitted');
   $('mediaStage').classList.add('video-mode');
   $('mainImage').hidden=true;
   $('mainImage').style.display='none';
@@ -699,6 +718,11 @@ function showVideoFrameOnly(){
   video.hidden=false;
 }
 function showArtworkFrame(){
+  const frame=$('videoFrame');
+  frame.style.width='';
+  frame.style.height='';
+  frame.style.aspectRatio='';
+  frame.classList.remove('video-fitted');
   $('mediaStage').classList.remove('video-mode');
   $('videoFrame').hidden=true;
   $('videoFrame').style.display='none';
@@ -1561,12 +1585,35 @@ audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
 video.addEventListener('play',updateUI);
 video.addEventListener('pause',updateUI);
+function fitVideoFrameNoCrop(){
+  const frame=$('videoFrame'), stage=$('mediaStage');
+  if(!frame || !stage || video.hidden || !video.videoWidth || !video.videoHeight) return;
+  const sw=stage.clientWidth, sh=stage.clientHeight;
+  if(sw<=0 || sh<=0) return;
+  const ratio=video.videoWidth/video.videoHeight;
+  const w=Math.min(sw, sh*ratio);
+  const h=w/ratio;
+  frame.style.width=Math.max(1, Math.floor(w))+'px';
+  frame.style.height=Math.max(1, Math.floor(h))+'px';
+  frame.style.aspectRatio=video.videoWidth+' / '+video.videoHeight;
+  frame.classList.add('video-fitted');
+}
+
+let videoStageResizeObserver=null;
+if(typeof ResizeObserver!=='undefined') {
+  videoStageResizeObserver=new ResizeObserver(()=>fitVideoFrameNoCrop());
+  const stageForObserver=$('mediaStage');
+  if(stageForObserver) videoStageResizeObserver.observe(stageForObserver);
+}
+
 video.addEventListener('loadedmetadata',()=>{
+  fitVideoFrameNoCrop();
   if(isVideoFile(fileMap.get(playlist[index]?.id)||{})){
     $('status').textContent='동영상 준비 완료';
   }
 });
 video.addEventListener('canplay',()=>{
+  fitVideoFrameNoCrop();
   if(activeMedia===video) $('status').textContent='동영상 재생 준비 완료';
 });
 video.addEventListener('webkitpresentationmodechanged',updatePiPButton);
@@ -1678,7 +1725,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=371',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=374',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
