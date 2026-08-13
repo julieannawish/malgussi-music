@@ -391,7 +391,7 @@ html,body{width:100%;overflow:hidden;}
     <div id="mediaStage" class="media-stage">
     <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
     <div id="videoFrame" class="video-frame" hidden>
-      <video id="mainVideo" class="video-player" controls playsinline webkit-playsinline preload="auto"></video>
+      <video id="mainVideo" class="video-player" playsinline webkit-playsinline preload="auto"></video>
       <button id="videoRunBtn" class="video-run-btn" type="button" aria-label="영상 실행">▶ 실행</button>
       <button id="btnPiP" class="video-pip-btn" type="button"
         title="작은 화면으로 전환" aria-label="작은 화면으로 전환" aria-hidden="true">↗</button>
@@ -441,7 +441,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.91</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.92</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -743,7 +743,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.91';
+const APP_VERSION='V3.92';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -1198,8 +1198,10 @@ async function playActiveMedia(fromUserGesture=false){
     });
     if(!actuallyPlaying) throw new Error('media did not enter playing state');
     if(m===video){
-      // The video is already running automatically; keep a visible in-frame
-      // 실행 button so the user can tap the video itself to resume/unmute.
+      // Keep the in-frame 실행 affordance visible, but the OUTSIDE player
+      // control must reflect the real video state: it is now playing, so the
+      // outside button must show 잠시멈춤.
+      activeMedia=video;
       const rb=$('videoRunBtn');
       if(rb) rb.classList.add('show');
     }
@@ -1345,6 +1347,8 @@ async function reconnectSavedFolderForPlayback(){
   }catch(e){return false;}
 }
 
+let appBootReady=Promise.resolve();
+
 async function stepTo(delta){
   if(!playlist.length)return;
   const next=Math.max(0,Math.min(playlist.length-1,index+delta));
@@ -1368,10 +1372,11 @@ async function stepTo(delta){
   }
   await loadCurrent(true,true);
 }
-$('btnPrev').onclick=()=>stepTo(-1);
-$('btnNext').onclick=()=>stepTo(1);
+$('btnPrev').onclick=async()=>{ await appBootReady; await stepTo(-1); };
+$('btnNext').onclick=async()=>{ await appBootReady; await stepTo(1); };
 
 $('btnPlay').onclick=async()=>{
+  await appBootReady;
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
   const f=fileMap.get(playlist[index]?.id);
   if(!f){
@@ -1742,8 +1747,16 @@ audio.addEventListener('loadedmetadata',syncMediaUI);
 video.addEventListener('loadedmetadata',syncMediaUI);
 audio.addEventListener('play',updateUI);
 audio.addEventListener('pause',updateUI);
-video.addEventListener('play',()=>{setMediaSessionState('playing');updateUI();});
-video.addEventListener('pause',()=>{setMediaSessionState('paused');updateUI();});
+video.addEventListener('play',()=>{
+  activeMedia=video;
+  setMediaSessionState('playing');
+  updateUI();
+});
+video.addEventListener('pause',()=>{
+  activeMedia=video;
+  setMediaSessionState('paused');
+  updateUI();
+});
 video.addEventListener('ended',()=>{setMediaSessionState('paused');updateUI();});
 function fitVideoFrameNoCrop(){
   const frame=$('videoFrame'), stage=$('mediaStage');
@@ -1927,7 +1940,9 @@ let mediaFiles=[];
   const K='malgussi_profile_v352', MK='malgussi_mode_v352', FM='malgussi_folder_meta_v352';
   let prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};
   try{prof={...prof,...JSON.parse(localStorage.getItem(K)||'{}')}}catch(e){}
-  let vmode=localStorage.getItem(MK)||'none', mfilter='all', msel=new Set(), psel=new Set(), pfilter='all', pmsel=new Set(), playlistPickerFiles=[], pickerRootName='', pickerPath=[];
+  let vmode=localStorage.getItem(MK)||'none';
+  if(!localStorage.getItem(MK)) localStorage.setItem(MK,'none');
+  let mfilter='all', msel=new Set(), psel=new Set(), pfilter='all', pmsel=new Set(), playlistPickerFiles=[], pickerRootName='', pickerPath=[];
   const q=id=>document.getElementById(id);
   function saveProf(){localStorage.setItem(K,JSON.stringify(prof));window.v352ProfileImage=prof.image||'profile_default.png';applyProf()}
   function applyProf(){window.v352ProfileImage=prof.image||'profile_default.png';q('v352Name').value=prof.name||'';q('v352Tagline').value=prof.tagline||'';q('v352ProfilePreview').src=prof.image||'profile_default.png';document.querySelector('h1').textContent='🎵 '+(prof.name||'말구씨 음악');document.querySelector('.sub').textContent=prof.tagline||'내 음악을 편하게 듣는 작은 음악상자'}
@@ -2044,7 +2059,7 @@ let mediaFiles=[];
   const baseMediaViewBtn=q('v352OpenBaseMedia');
   if(baseMediaViewBtn) baseMediaViewBtn.remove();
   q('v352OpenMedia').onclick=()=>{
-    // V3.91: restore the V3.68 proven behavior ONLY for this button.
+    // V3.92: restore the V3.68 proven behavior ONLY for this button.
     // The tap synchronously opens the native iOS Files picker.
     psel.clear();
     const picker=q('mediaFilesPicker');
@@ -2598,7 +2613,8 @@ let mediaFiles=[];
       else updateUI();
     }
   }
-  bootMalgussi();
+  appBootReady=bootMalgussi();
+  appBootReady.catch(()=>{});
 })();
 </script>
 </body>
