@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="malgussi-build" content="MALGUSSI_BUILD_V363">
+<meta name="malgussi-build" content="MALGUSSI_BUILD_V369">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +17,7 @@ body{min-height:100vh}
 button{font:inherit;border:0}
 .app{max-width:720px;margin:0 auto;padding:18px 16px 20px}
 h1{text-align:center;font-size:25px;margin:0 0 4px;font-weight:800}
-.sub{text-align:center;color:#665D58;font-size:14px;margin-bottom:10px}
+.sub{text-align:center;color:#665D58;font-size:14px;margin-bottom:10px;display:none}
 .card{background:#fff;border-radius:22px;padding:12px;box-shadow:0 2px 12px rgba(58,36,26,.08)}
 .art{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f5f1eb;border-radius:18px;display:block}.art[hidden]{display:none!important}.video-art{background:#111;display:none}.video-art.video-active{display:block}
 .now{text-align:center;font-size:19px;font-weight:800;margin:10px 4px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -203,6 +203,40 @@ input[type=file]{display:none}
 .v352-pl-row{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E8DED6;border-radius:15px;padding:9px;margin:7px 0;min-height:64px;touch-action:none;user-select:none}.v352-pl-row.sel{background:#F4E8DC;border:2px solid #8B664A}.v352-pl-row.dragging{opacity:.5}.v352-pl-row.drop{border:2px dashed #2457A6;background:#EEF5FF}.v352-num{width:28px;text-align:center;color:#665D58;font-weight:900}.v352-drag{width:38px;height:44px;border-radius:10px;background:#F2F2F2;color:#777;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:900;touch-action:none}.v352-pl-footer{display:flex;align-items:center;gap:10px;margin:12px 0}.v352-pl-footer .storage-delete{margin:0;flex:1}.v352-empty{text-align:center;color:#665D58;background:#fff;border:1px solid #E8DED6;border-radius:16px;padding:35px 15px;line-height:1.6}.v352-row{touch-action:none}
 
 .topbar{max-width:720px;margin:0 auto 6px;display:flex;align-items:center;justify-content:space-between;gap:10px}.topbar h1{margin:0}.topbar .sub{margin-top:4px}.top-settings{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:1px solid #D8C8BA;background:#FFF8F0;color:#4A352A;font-size:23px;box-shadow:0 2px 8px rgba(58,36,26,.08)}.settings-chevron{float:right;color:#8B664A;font-size:24px;line-height:16px}.settings-link-card{cursor:pointer}.head-mini,.v352-head-mini{display:flex;align-items:center;justify-content:space-between;gap:10px}.mini-back,.mini-save{border:0;background:transparent;font-weight:900;font-size:17px;color:#2457A6}.mini-back{font-size:30px}.profile-editor[hidden]{display:none!important}.pl-actions{display:flex;gap:10px;margin-left:auto}.pl-icon-btn{width:78px;height:54px;border-radius:15px;border:1px solid;font-weight:900;display:flex;align-items:center;justify-content:center;gap:5px;flex-direction:column}.pl-icon-btn span{font-size:22px;line-height:20px}.pl-icon-btn small{font-size:12px}.pl-icon-btn.add{background:#EAF8F1;color:#16804A;border-color:#A9DFC4}.pl-icon-btn.delete{background:#FFF0EB;color:#B4472E;border-color:#E5B9A7}.pl-icon-btn:disabled{opacity:.38;filter:grayscale(.5)}
+
+/* V3.69: responsive full-screen player + fixed playlist header/mode */
+html,body{min-height:100%;}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+button,img,.app,.card,.v352-screen,.v352-screen *{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.app{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;padding-bottom:max(12px,env(safe-area-inset-bottom));}
+.app > .topbar{flex:0 0 auto;}
+.app > .card{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;}
+.card .video-frame,.card > .art{flex:1 1 auto;min-height:180px;height:auto;aspect-ratio:auto;}
+.card .now{flex:0 0 auto;}
+.card .count{flex:0 0 auto;}
+.card .controls{flex:0 0 auto;margin-top:auto;}
+.card .progress-row{flex:0 0 auto;}
+.card > .menu{flex:0 0 auto;}
+.playlist-screen{overflow:hidden;display:none;flex-direction:column;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));}
+.playlist-screen.open{display:flex;}
+.playlist-screen .playlist-head{flex:0 0 auto;}
+.playlist-screen .playlist-list{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:8px;}
+.v352-screen{overflow:hidden;display:none;flex-direction:column;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));}
+.v352-screen.open{display:flex;}
+.v352-screen > .v352-inner{min-height:0;flex:1 1 auto;display:flex;flex-direction:column;overflow:hidden;}
+#v352PlaylistList{min-height:0;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 1px 8px;}
+#v352Playlist .v352-pl-footer,#v352Playlist .v352-note,#v352Playlist > .v352-inner > .v352-head,#v352Playlist > .v352-inner > .v352-section{flex:0 0 auto;}
+#v352Playlist .v352-note{padding-bottom:4px;}
+#v352Playlist .v352-pl-row,#v352Playlist .v352-row{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.v352-pl-row .v352-info,.v352-pl-row .v352-name,.v352-pl-row .v352-sub{user-select:none;-webkit-user-select:none;}
+
+
+@media (max-height:600px){
+  .app{padding-top:10px;padding-bottom:3px;}
+  .card{padding:8px;}
+  .card .art,.card .video-frame{min-height:140px;}
+}
+
 </style>
 
 
@@ -263,7 +297,7 @@ input[type=file]{display:none}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.68</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.69</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -421,7 +455,7 @@ function updateMediaSessionMetadata(artworkOverride){
 
   const embedded=artworkOverride||artworkMap.get(t.id)||null;
   const cover=embedded?.blobUrl || artworkToDataUrl(embedded);
-  const fallback=new URL('./dog_default.png',location.href);
+  let fallback='./dog_default.png'; try{fallback=new URL('./dog_default.png',location.href).href}catch(e){}
 
   try{
     const artwork=[];
@@ -434,7 +468,7 @@ function updateMediaSessionMetadata(artworkOverride){
     }else{
       artwork.push({src:fallback,sizes:'512x512',type:'image/png'});
       artwork.push({
-        src:new URL('./dog_default.png',location.href).href,
+        src:fallback,
         sizes:'512x512',
         type:'image/png'
       });
@@ -553,7 +587,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.68';
+const APP_VERSION='V3.69';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -966,7 +1000,7 @@ async function loadCurrent(autoplay){
     video.pause(); video.removeAttribute('src'); video.load(); video.hidden=true; showArtworkFrame();
     activeMedia=audio;
     $('now').textContent=t.name;
-    $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
+    $('count').textContent=`${playlist.length}곡 중 ${index+1}곡`;
     if($('mainImage').dataset.url){
       URL.revokeObjectURL($('mainImage').dataset.url);
       $('mainImage').removeAttribute('data-url');
@@ -986,7 +1020,7 @@ async function loadCurrent(autoplay){
 
   setMediaSource(f);
   $('now').textContent=t.name;
-  $('count').textContent=`${index+1}곡 중 ${playlist.length}곡`;
+  $('count').textContent=`${playlist.length}곡 중 ${index+1}곡`;
 
   if($('mainImage').dataset.url){
     URL.revokeObjectURL($('mainImage').dataset.url);
@@ -1146,7 +1180,6 @@ function renderPlaylist(){
   playlist.forEach((t,i)=>{
     const row=document.createElement('div');
     row.className='track-row';
-    row.classList.toggle('selected', i===index);
     row.className='track-row'+(i===index?' current':'');
     row.dataset.index=i;
 
@@ -1475,7 +1508,7 @@ video.addEventListener('error',()=>{
   $('status').textContent=msg;
 });
 
-function advanceAfterEnd(){
+async function advanceAfterEnd(){
   if(!playlist.length)return;
   const mode=localStorage.getItem('malgussi_mode_v352')||'none';
   if(mode==='none'){
@@ -1483,14 +1516,25 @@ function advanceAfterEnd(){
     updateUI();
     return;
   }
-  if(mode==='one'){loadCurrent(true);return;}
-  if(mode==='random'){
-    if(playlist.length===1){loadCurrent(true);return;}
-    let next=index; while(next===index) next=Math.floor(Math.random()*playlist.length);
-    index=next; loadCurrent(true); return;
+  // Always derive the next action from the CURRENT mode and CURRENT index.
+  // This prevents a previous selection from controlling one-track repeat.
+  if(mode==='one'){
+    await loadCurrent(true);
+    return;
   }
-  if(index<playlist.length-1){index++;loadCurrent(true)}
-  else {index=0;loadCurrent(true)}
+  if(mode==='random'){
+    if(playlist.length===1){await loadCurrent(true);return;}
+    let next=index;
+    while(next===index) next=Math.floor(Math.random()*playlist.length);
+    index=next;
+    try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+    await loadCurrent(true);
+    return;
+  }
+  // order repeat
+  index=(index+1)%playlist.length;
+  try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+  await loadCurrent(true);
 }
 audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
 audio.addEventListener('pause',()=>{setMediaSessionState('paused');});
@@ -1540,7 +1584,7 @@ function updateUI(){
     ?'<span class="icon">❚❚</span><span class="label">잠시멈춤</span>'
     :'<span class="icon">▶</span><span class="label">재생</span>';
   $('count').textContent=playlist.length
-    ?`${index+1}곡 중 ${playlist.length}곡`
+    ?`${playlist.length}곡 중 ${index+1}곡`
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
@@ -1561,7 +1605,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=366',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=369',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -1601,7 +1645,7 @@ let mediaFiles=[];
   function open(id){
     q(id).classList.add('open');q(id).setAttribute('aria-hidden','false');
     if(id==='v352Media'){renderMedia();}
-    if(id==='v352Playlist')renderPL();
+    if(id==='v352Playlist'){psel.clear();renderPL();}
     if(id==='v352Settings'){applyProf();updateMode();loadFolderMeta2();q('profileEditor').hidden=true}
   }
   function close(id){q(id).classList.remove('open');q(id).setAttribute('aria-hidden','true')}
@@ -1655,8 +1699,31 @@ let mediaFiles=[];
   }); q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
   q('v352Name').oninput=e=>{prof.name=e.target.value;saveProf()}; q('v352Tagline').oninput=e=>{prof.tagline=e.target.value;saveProf()};
-  function updateMode(){document.querySelectorAll('[data-v352-mode]').forEach(b=>b.classList.toggle('on',b.dataset.v352Mode===vmode));localStorage.setItem(MK,vmode)}
-  document.querySelectorAll('[data-v352-mode]').forEach(b=>b.onclick=()=>{vmode=b.dataset.v352Mode;updateMode()});
+  function updateMode(){
+    document.querySelectorAll('[data-v352-mode]').forEach(b=>b.classList.toggle('on',b.dataset.v352Mode===vmode));
+    localStorage.setItem(MK,vmode);
+  }
+  document.querySelectorAll('[data-v352-mode]').forEach(b=>b.onclick=async()=>{
+    vmode=b.dataset.v352Mode;
+    // Apply the new mode immediately so the UI never remains on the old mode.
+    updateMode();
+    // If exactly one track is selected while choosing one-track repeat,
+    // that selected track becomes the current track. This removes stale
+    // previous-selection behavior.
+    if(vmode==='one' && psel.size===1){
+      const selectedId=[...psel][0];
+      const selectedIndex=playlist.findIndex(t=>t.id===selectedId);
+      if(selectedIndex>=0){
+        index=selectedIndex;
+        try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+        psel.clear();
+        renderPL();
+        if(fileMap.has(playlist[index]?.id)){
+          try{await loadCurrent(false);}catch(e){}
+        }
+      }
+    }
+  });
   function loadFolderMeta2(){try{const m=JSON.parse(localStorage.getItem(FM)||localStorage.getItem('malgussi_recent_music_folder_v1')||'null');const txt=m?(m.name+' · '+(m.count||m.fileCount||0)+'개 파일'):'아직 지정하지 않았습니다.';q('v352FolderPath').textContent=txt;q('v352MediaFolder').textContent=txt}catch(e){}}
   function saveFolderMeta2(files){const a=[...files];const p=a.map(f=>f.webkitRelativePath||'').find(Boolean);const name=p?p.split('/')[0]:'기본 미디어 폴더';localStorage.setItem(FM,JSON.stringify({name,count:a.length,at:Date.now()}));loadFolderMeta2()}
   async function chooseFolder(){if('showDirectoryPicker'in window){try{const h=await window.showDirectoryPicker({mode:'read'});await saveMusicDirectoryHandle(h);const fs=[];for await(const e of h.values())if(e.kind==='file'){const f=await e.getFile();if(isMediaFile(f))fs.push(f)}saveFolderMeta2(fs);await cacheMediaFiles(fs);relinkFromFolder(fs);return}catch(e){}}q('folderFiles').click()}
@@ -1704,7 +1771,7 @@ let mediaFiles=[];
     if(art)cacheArtworkForTrack(key,art);
     return art;
   }
-  async function videoFirstFrame(f){
+  window.videoFirstFrame=async function(f){
     try{
       const url=URL.createObjectURL(f);
       const v=document.createElement('video');
@@ -1763,7 +1830,68 @@ let mediaFiles=[];
   }
   document.querySelectorAll('[data-v352-filter]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-v352-filter]').forEach(x=>x.classList.remove('on'));b.classList.add('on');mfilter=b.dataset.v352Filter;renderMedia()});
   function toast2(m){q('status').textContent=m;setTimeout(()=>{if(q('status').textContent===m)q('status').textContent=''},1800)}
-  function renderPL(){const box=q('v352PlaylistList');box.innerHTML='';if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return}playlist.forEach((t,i)=>{const row=document.createElement('div');row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');row.dataset.i=i;const c=document.createElement('button');c.className='v352-check'+(psel.has(t.id)?' on':'');c.textContent=psel.has(t.id)?'✓':'';c.onclick=e=>{e.stopPropagation();toggleP(t.id)};const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');const info=document.createElement('div');info.className='v352-info';const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');info.append(nm,su);const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';row.append(c,n,info,d);row.onclick=()=>{if(psel.size)return;index=i;loadCurrent(true);close('v352Playlist')};setupSlide(row);setupMove(row,d);box.append(row)});updatePF()}
+  function renderPL(){
+    const box=q('v352PlaylistList');
+    box.innerHTML='';
+    if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return;}
+    playlist.forEach((t,i)=>{
+      const row=document.createElement('div');
+      row.className='v352-pl-row'+(psel.has(t.id)?' sel':'');
+      row.dataset.i=i;
+      const c=document.createElement('button');
+      c.className='v352-check'+(psel.has(t.id)?' on':'');
+      c.textContent=psel.has(t.id)?'✓':'';
+      c.setAttribute('aria-label',(psel.has(t.id)?'선택 해제 ':'선택 ')+t.name);
+      let suppressCheckClick=false;
+      c.onclick=e=>{
+        e.stopPropagation();
+        if(suppressCheckClick){suppressCheckClick=false;return;}
+        toggleP(t.id);
+      };
+      setupSelectSlide(c,()=>{suppressCheckClick=true;});
+      const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');
+      const info=document.createElement('div');info.className='v352-info';
+      const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;
+      const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');
+      info.append(nm,su);
+      const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';
+      row.append(c,n,info,d);
+      // Tapping the track name/row (not the checkbox or drag handle) makes THIS track current.
+      row.addEventListener('click',async e=>{
+        if(e.target.closest('.v352-check')||e.target.closest('.v352-drag'))return;
+        index=i;
+        try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(err){}
+        if(!fileMap.has(t.id)){
+          const ok=await reconnectSavedFolderForPlayback();
+          if(!ok){q('status').textContent='이 곡의 원본 파일을 연결할 수 없습니다.';return;}
+        }
+        await loadCurrent(true);
+        close('v352Playlist');
+      });
+      setupMove(row,d);
+      box.append(row);
+    });
+    updatePF();
+  }
+  function setupSelectSlide(check,onPointerSelect){
+    let active=false,seen=new Set();
+    check.addEventListener('pointerdown',e=>{
+      active=true;seen.clear();
+      onPointerSelect?.();
+      const row=check.closest('.v352-pl-row');
+      const id=playlist[Number(row?.dataset.i)]?.id;
+      if(id){toggleP(id);seen.add(id);}
+      try{check.setPointerCapture?.(e.pointerId);}catch(err){}
+      e.preventDefault();
+    });
+    check.addEventListener('pointermove',e=>{
+      if(!active)return;
+      const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');
+      const id=playlist[Number(r?.dataset.i)]?.id;
+      if(id&&!seen.has(id)){toggleP(id);seen.add(id);}
+    });
+    ['pointerup','pointercancel'].forEach(ev=>check.addEventListener(ev,()=>active=false));
+  }
   function toggleP(id){psel.has(id)?psel.delete(id):psel.add(id);renderPL()}
   function updatePF(){q('v352SelectedCount').textContent='선택 '+psel.size+'개';q('v352Delete').disabled=!psel.size;q('v352Delete').style.opacity=psel.size?1:.5}
   function setupSlide(row){let active=false,seen=new Set();row.addEventListener('pointerdown',e=>{if(e.target.closest('.v352-drag'))return;active=true;seen.clear();const id=playlist[+row.dataset.i]?.id;if(id){toggleP(id);seen.add(id)}row.setPointerCapture?.(e.pointerId);e.preventDefault()});row.addEventListener('pointermove',e=>{if(!active)return;const r=document.elementFromPoint(e.clientX,e.clientY)?.closest('.v352-pl-row');if(!r)return;const id=playlist[+r.dataset.i]?.id;if(id&&!seen.has(id)){toggleP(id);seen.add(id)}});['pointerup','pointercancel'].forEach(ev=>row.addEventListener(ev,()=>active=false))}
