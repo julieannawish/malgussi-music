@@ -121,3 +121,6 @@ V4.13은 V4.13의 회귀 방지 기준을 유지하면서, 재생 상태 보존�
 
 ## V4.17
 - Critical File resolution and startup media binding fix.
+
+## V4.18
+- Immediate MP4 connection state after playlist add.
