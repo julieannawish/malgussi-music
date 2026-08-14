@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.11</title>
+<title>말구씨 음악 앱 · V4.12</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.11</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.12</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -629,8 +629,8 @@ function setupMediaSessionHandlers(){
   });
   // Register only track actions so iPhone can show Previous / Play / Next
   // rather than replacing them with seek controls.
-  safe('previoustrack',async()=>{try{await appBootReady; await stepTo(-1);}catch(e){}});
-  safe('nexttrack',async()=>{try{await appBootReady; await stepTo(1);}catch(e){}});
+  safe('previoustrack',async()=>{try{await stepTo(-1);}catch(e){}});
+  safe('nexttrack',async()=>{try{await stepTo(1);}catch(e){}});
 }
 
 function refreshMediaSessionForPlayback(){
@@ -775,6 +775,90 @@ async function loadCachedMediaFiles(){
     });
   }catch(e){ return []; }
 }
+
+// V4.12: persist the actual file-to-track relationship by playlist track ID.
+// The old cache could restore the files but had to rediscover the relationship
+// by filename. On iOS that could leave playlist=3 while fileMap=empty.
+const TRACK_CACHE_DB='malgussi_track_cache_v2';
+const TRACK_CACHE_STORE='tracks';
+async function openTrackCacheDB(){
+  return await new Promise((resolve,reject)=>{
+    const req=indexedDB.open(TRACK_CACHE_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(TRACK_CACHE_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function saveTrackFile(trackId,f){
+  if(!trackId||!f||!isMediaFile(f))return false;
+  try{
+    const db=await openTrackCacheDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+      tx.objectStore(TRACK_CACHE_STORE).put({
+        blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,
+        type:f.type||'',path:f.webkitRelativePath||f.name,trackId
+      },trackId);
+      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    });
+    return true;
+  }catch(e){console.warn('saveTrackFile',e);return false;}
+}
+async function loadTrackFile(trackId){
+  if(!trackId)return null;
+  try{
+    const db=await openTrackCacheDB();
+    return await new Promise((resolve,reject)=>{
+      const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
+      req.onsuccess=()=>{
+        const x=req.result;
+        if(!x||!x.blob){resolve(null);return;}
+        try{
+          const f=new File([x.blob],x.name,{type:x.type||'',lastModified:Number(x.lastModified)||Date.now()});
+          try{Object.defineProperty(f,'webkitRelativePath',{value:x.path||x.name,configurable:true});}catch(e){}
+          resolve(f);
+        }catch(e){resolve(null)}
+      };
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){return null;}
+}
+async function restoreTrackFileMap(){
+  if(!playlist.length)return 0;
+  const results=await Promise.all(playlist.map(async t=>({t,f:fileMap.has(t.id)?fileMap.get(t.id):await loadTrackFile(t.id)})));
+  let linked=0;
+  for(const {t,f} of results){
+    if(!f)continue;
+    if(!fileMap.has(t.id))linked++;
+    fileMap.set(t.id,f);
+    t.size=Number(f.size)||t.size||0;
+    t.type=f.type||t.type||'';
+    t.lastModified=Number(f.lastModified)||t.lastModified||0;
+  }
+  if(linked){saveList();renderPlaylist();renderStorageInfo();updateUI();}
+  return linked;
+}
+async function clearTrackFileCache(){
+  try{
+    const db=await openTrackCacheDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+      tx.objectStore(TRACK_CACHE_STORE).clear();
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+    });
+  }catch(e){}
+}
+async function deleteTrackFile(trackId){
+  if(!trackId)return;
+  try{
+    const db=await openTrackCacheDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+      tx.objectStore(TRACK_CACHE_STORE).delete(trackId);
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+    });
+  }catch(e){}
+}
 async function canUseSavedMusicDirectory(){
   const h=await loadMusicDirectoryHandle();
   if(!h || typeof h.queryPermission!=='function') return false;
@@ -783,7 +867,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.11';
+const APP_VERSION='V4.12';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1232,6 +1316,7 @@ function reconnectSelectedFiles(selectedFiles){
     const existing=playlist.find(t=>normalizeFileName(t.name)===key);
     if(existing){
       fileMap.set(existing.id,f);
+      saveTrackFile(existing.id,f).catch(()=>{});
       existing.name=f.name;
       existing.size=f.size;
       existing.type=f.type||existing.type||'';
@@ -1242,6 +1327,7 @@ function reconnectSelectedFiles(selectedFiles){
       const track={id:id,name:f.name,size:f.size,type:f.type||'',lastModified:f.lastModified||0};
       playlist.push(track);
       fileMap.set(id,f);
+      saveTrackFile(id,f).catch(()=>{});
       added++;
     }
   }
@@ -1560,19 +1646,27 @@ async function reconnectSavedFolderForPlayback(){
 let appBootReady=Promise.resolve();
 
 async function ensurePlaybackReady(options={}){
-  const waitForBoot=options.waitForBoot!==false;
+  const waitForBoot=options.waitForBoot===true;
   if(waitForBoot){ try{ await appBootReady; }catch(e){} }
   if(!playlist.length) return false;
-  if(fileMap.has(playlist[index]?.id)) return true;
+  const currentId=playlist[index]?.id;
+  if(currentId && fileMap.has(currentId)) return true;
+  if(currentId){
+    const exact=await loadTrackFile(currentId);
+    if(exact){fileMap.set(currentId,exact);return true;}
+  }
   try{
     const cached=await loadCachedMediaFiles();
     if(cached.length){
       mediaFiles=cached;
       relinkFromFolder(cached,false,true);
-      if(fileMap.has(playlist[index]?.id)) return true;
+      if(currentId && fileMap.has(currentId)){
+        await saveTrackFile(currentId,fileMap.get(currentId));
+        return true;
+      }
     }
   }catch(e){}
-  return !!fileMap.has(playlist[index]?.id);
+  return !!(currentId && fileMap.has(currentId));
 }
 
 async function stepTo(delta){
@@ -1580,7 +1674,7 @@ async function stepTo(delta){
   if(!playlist.length)return;
 
   if(!fileMap.has(playlist[index]?.id)){
-    const ready=await ensurePlaybackReady({waitForBoot:true});
+    const ready=await ensurePlaybackReady({waitForBoot:false});
     if(!isCurrentMediaCommand(token))return;
     if(!ready){
       $('status').textContent='재생 파일을 준비하지 못했습니다. 기본 미디어 폴더를 확인해 주세요.';
@@ -1747,6 +1841,7 @@ function renderPlaylist(){
       playlist.splice(i,1);
       fileMap.delete(t.id);
       artworkMap.delete(t.id);
+      deleteTrackFile(t.id).catch(()=>{});
       if(index>i)index--;
       if(index>=playlist.length)index=Math.max(0,playlist.length-1);
       saveList();
@@ -1777,15 +1872,15 @@ function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
   for(const t of playlist){
     const fn=exactFileName(t.name), nn=normalizeFileName(t.name);
     let candidates=arr.filter(f=>!used.has(f)&&t.path&&f.webkitRelativePath&&f.webkitRelativePath===t.path);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
   }
   const before=playlist.length;
   const currentIdBeforeCleanup=playlist[index]?.id;
@@ -1793,7 +1888,7 @@ function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
   const removed=removedIds.size;
   if(cleanupMissing){
     playlist=playlist.filter(t=>fileMap.has(t.id));
-    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id)});
+    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);deleteTrackFile(id).catch(()=>{})});
   }
   saveVerifiedScan(arr);
   const keptCurrentIndex=playlist.findIndex(t=>t.id===currentIdBeforeCleanup);
@@ -2182,7 +2277,19 @@ async function prepareCurrentTrackForUI(){
   }
   const t=playlist[index];
   if(!t)return false;
-  const f=fileMap.get(t.id);
+  let f=fileMap.get(t.id);
+  if(!f) f=await loadTrackFile(t.id);
+  if(f){fileMap.set(t.id,f);}
+  if(!f){
+    try{
+      const cached=await loadCachedMediaFiles();
+      if(cached.length){
+        relinkFromFolder(cached,false,true);
+        f=fileMap.get(t.id)||null;
+        if(f) await saveTrackFile(t.id,f);
+      }
+    }catch(e){}
+  }
   if(!f){
     updateUI();
     return false;
@@ -2256,7 +2363,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=411',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=412',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2506,6 +2613,7 @@ let mediaFiles=[];
       const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
       playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
       fileMap.set(id,f);
+      saveTrackFile(id,f).catch(()=>{});
       newItems.push(id);
     }
     if(!newItems.length){ toast2('선택한 곡은 이미 재생목록에 있습니다.'); return; }
@@ -2962,7 +3070,7 @@ let mediaFiles=[];
     psel.clear();
     index=Math.max(0,index-removedBeforeIndex);
     if(index>=playlist.length)index=Math.max(0,playlist.length-1);
-    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id)});
+    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);deleteTrackFile(id).catch(()=>{})});
     saveList();
     if(currentId&&removedIds.has(currentId)){
       if(playlist.length)loadCurrent(false);else showDefaultScreen();
@@ -2976,7 +3084,7 @@ let mediaFiles=[];
     const currentId=playlist[index]?.id;
     const removedBefore=[...dupIds].filter(id=>{const pos=playlist.findIndex(t=>t.id===id);return pos>=0&&pos<index}).length;
     playlist=playlist.filter(t=>!dupIds.has(t.id));
-    dupIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);});
+    dupIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);deleteTrackFile(id).catch(()=>{})});
     psel.clear();
     index=Math.max(0,index-removedBefore);
     if(index>=playlist.length)index=Math.max(0,playlist.length-1);
@@ -2985,7 +3093,7 @@ let mediaFiles=[];
     renderPL();renderStorageInfo();updateUI();
     toast2(`중복 ${dupIds.size}곡을 삭제했습니다.`);
   };
-  q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);loadPlaylistBackup().then(()=>openPlaylistBackupDB()).then(db=>{try{const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readwrite');tx.objectStore(PLAYLIST_BACKUP_STORE).delete('playlist')}catch(e){}});localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);playlist=[];fileMap.clear();mediaFiles=[];playlistPickerFiles=[];psel.clear();msel.clear();pmsel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
+  q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);loadPlaylistBackup().then(()=>openPlaylistBackupDB()).then(db=>{try{const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readwrite');tx.objectStore(PLAYLIST_BACKUP_STORE).delete('playlist')}catch(e){}});localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);clearTrackFileCache();playlist=[];fileMap.clear();mediaFiles=[];playlistPickerFiles=[];psel.clear();msel.clear();pmsel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
   async function bootMalgussi(){
     loadFolderMeta2();
     await restorePlaylistIfMissing();
@@ -2999,12 +3107,17 @@ let mediaFiles=[];
       // wait for the user's next Play/Next/Add tap to request permission.
       // Restore the persistent file cache first. This keeps the playlist connected
       // even when iOS does not restore the directory handle permission immediately.
+      // V4.12: restore exact trackId -> File mapping first. The playlist must
+      // never be shown as playable until this mapping has had a chance to load.
+      await restoreTrackFileMap();
       const cachedFirst=await loadCachedMediaFiles();
-      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false,true);
+      if(cachedFirst.length) relinkFromFolder(cachedFirst,false,true);
       if(h && p==='granted'){
         const files=await collectDirectoryMedia(h,'');
-        if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,false,true);}
+        if(files.length){await cacheMediaFiles(files,true);relinkFromFolder(files,false,true);}
       }
+      // A final exact restore wins over any filename-based relink.
+      await restoreTrackFileMap();
       if(playlist.length){await loadCurrent(false,false,true);syncMediaUI();}
       else updateUI();
     }catch(e){
