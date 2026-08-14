@@ -1,12 +1,20 @@
 {
   "name": "말구씨 음악 앱",
   "short_name": "말구씨 음악",
-  "start_url": "./?v=398",
+  "start_url": "./?v=399",
   "display": "standalone",
   "background_color": "#FFFCF8",
   "theme_color": "#FFFCF8",
   "icons": [
-    {"src":"app-icon-192.png","sizes":"192x192","type":"image/png"},
-    {"src":"app-icon.png","sizes":"1254x1254","type":"image/png"}
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "app-icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png"
+    }
   ]
 }

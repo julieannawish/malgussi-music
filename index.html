@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V3.98</title>
+<title>말구씨 음악 앱 · V3.99</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -353,7 +353,7 @@ html,body{width:100%;overflow:hidden;}
   flex:0 0 auto; width:100%; box-sizing:border-box;
 }
 #v352Playlist .v352-mode {
-  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
   gap:7px; width:100%; box-sizing:border-box;
 }
 #v352Playlist .v352-mode button {
@@ -444,7 +444,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.98</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V3.99</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -746,7 +746,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V3.98';
+const APP_VERSION='V3.99';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -771,6 +771,11 @@ let index=0;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
+// V3.99: serialize/obsolete overlapping transport commands so rapid taps
+// cannot leave the three main controls in a stale state.
+let mediaCommandToken=0;
+let mediaLoadToken=0;
+let mediaActuallyPlaying=false;
 
 function isVideoFile(f){
   const n=(f.name||'').toLowerCase();
@@ -810,10 +815,12 @@ function setMediaSource(f){
   objectUrl=URL.createObjectURL(f);
 
   audio.pause();
+  if(activeMedia===audio) mediaActuallyPlaying=false;
   audio.removeAttribute('src');
   audio.load();
 
   video.pause();
+  if(activeMedia===video) mediaActuallyPlaying=false;
   video.removeAttribute('src');
   video.load();
   video.hidden=true;
@@ -846,6 +853,9 @@ function formatBytes(bytes){
 function saveList(){
   localStorage.setItem(KEY,JSON.stringify(playlist));
 }
+
+function isCurrentMediaCommand(token){ return token===mediaCommandToken; }
+function beginMediaCommand(){ return ++mediaCommandToken; }
 
 function loadArtworkCache(){
   try{return JSON.parse(localStorage.getItem(ARTWORK_CACHE_KEY)||'{}')||{};}catch(e){return {}; }
@@ -1177,6 +1187,7 @@ async function waitForVideoReady(timeoutMs=2500){
 
 async function playActiveMedia(fromUserGesture=false){
   const m=activeMedia||audio;
+  mediaActuallyPlaying=false;
   if(!m || !m.src) return false;
   try{
     if(m===video){
@@ -1190,7 +1201,6 @@ async function playActiveMedia(fromUserGesture=false){
     const playPromise=m.play();
     if(playPromise && typeof playPromise.then==='function') await playPromise;
     const actuallyPlaying=await new Promise(resolve=>{
-      if(m.ended || m.paused){ resolve(false); return; }
       let done=false,timer=null,startTime=Number(m.currentTime)||0;
       const finish=ok=>{if(done)return;done=true;clearTimeout(timer);m.removeEventListener('playing',onPlaying);m.removeEventListener('timeupdate',onTime);m.removeEventListener('pause',onPause);m.removeEventListener('ended',onEnded);resolve(ok)};
       const onPlaying=()=>finish(true);
@@ -1201,9 +1211,10 @@ async function playActiveMedia(fromUserGesture=false){
       m.addEventListener('timeupdate',onTime);
       m.addEventListener('pause',onPause,{once:true});
       m.addEventListener('ended',onEnded,{once:true});
-      timer=setTimeout(()=>finish(!m.paused && !m.ended),1200);
+      timer=setTimeout(()=>finish(!m.paused && !m.ended && ((Number(m.currentTime)||0)>startTime || m.readyState>=3)),2200);
     });
     if(!actuallyPlaying) throw new Error('media did not enter playing state');
+    mediaActuallyPlaying=true;
     if(m===video){
       // While video is playing, the in-frame 실행 overlay must disappear.
       // The outside player control is the single pause/play control.
@@ -1229,7 +1240,8 @@ async function playActiveMedia(fromUserGesture=false){
   }
 }
 async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
-  if(!playlist.length){updateUI();return}
+  const loadToken=++mediaLoadToken;
+  if(!playlist.length){updateUI();return false}
   index=Math.max(0,Math.min(index,playlist.length-1));
   try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
   const t=playlist[index];
@@ -1256,9 +1268,10 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
     $('mainImage').style.display='block';
     $('status').textContent='원본 파일을 연결하면 재생할 수 있습니다.';
     updateUI();
-    return;
+    return false;
   }
 
+  if(loadToken!==mediaLoadToken) return false;
   setMediaSource(f);
   $('now').textContent=t.name;
   $('count').textContent=`${playlist.length}곡 중 ${index+1}곡`;
@@ -1292,6 +1305,8 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
       try{const bin=atob(frame.split(',')[1]||'');const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);currentArtwork={mime:'image/jpeg',bytes};cacheArtworkForTrack(t.id,currentArtwork);artworkMap.set(t.id,currentArtwork);}catch(e){}
     }
   }
+
+  if(loadToken!==mediaLoadToken) return false;
 
   if(!isVideoFile(f)){
     const u=currentArtwork?artworkToUrl(currentArtwork):null;
@@ -1333,6 +1348,7 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
       }
     }else{
       video.pause();
+      mediaActuallyPlaying=false;
       const rb=$('videoRunBtn');
       if(rb) rb.classList.remove('show');
       setMediaSessionState('paused');
@@ -1340,10 +1356,13 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   }else if(autoplay){
     playSucceeded=await playActiveMedia(fromUserGesture);
   }
-  if(playSucceeded) $('status').textContent='';
+  if(f && (!autoplay || playSucceeded)) $('status').textContent='';
   updateMediaSessionMetadata(currentArtwork);
   setMediaSessionState(playSucceeded?'playing':'paused');
+  // Do not leave stale error/instruction text on a valid media item.
+  if(f && (!isVideoFile(f) || playSucceeded || !autoplay)) $('status').textContent='';
   updateUI();
+  return playSucceeded || !autoplay;
 }
 
 async function reconnectSavedFolderForPlayback(){
@@ -1356,15 +1375,10 @@ async function reconnectSavedFolderForPlayback(){
   }
   if(p!=='granted')return false;
   try{
-    const files=[];
-    for await(const entry of h.values()){
-      if(entry.kind==='file'){
-        const f=await entry.getFile();
-        if(isMediaFile(f))files.push(f);
-      }
-    }
+    const files=await collectDirectoryMedia(h,'');
     if(!files.length)return false;
-    await relinkFromFolder(files);
+    await cacheMediaFiles(files,true);
+    await relinkFromFolder(files,true,true);
     return !!fileMap.get(playlist[index]?.id);
   }catch(e){return false;}
 }
@@ -1383,7 +1397,7 @@ async function ensurePlaybackReady(){
     const cached=await loadCachedMediaFiles();
     if(cached.length){
       mediaFiles=cached;
-      relinkFromFolder(cached,false,true);
+      relinkFromFolder(cached,true,true);
       if(fileMap.has(playlist[index]?.id)) return true;
     }
   }catch(e){}
@@ -1391,51 +1405,83 @@ async function ensurePlaybackReady(){
 }
 
 async function stepTo(delta){
-  if(!(await ensurePlaybackReady())){
-    if(playlist.length) $('status').textContent='재생 파일을 준비하는 중입니다. 잠시 후 다시 눌러 주세요.';
-    return;
-  }
-  const next=Math.max(0,Math.min(playlist.length-1,index+delta));
-  if(next===index){
-    // At the edge, do not silently wrap unless a repeat mode is explicitly active.
-    if((localStorage.getItem('malgussi_mode_v352')||'order')==='order'){
-      index=delta>0?0:playlist.length-1;
-    }else if(localStorage.getItem('malgussi_mode_v352')==='random'){
-      if(playlist.length>1){let r=index;while(r===index)r=Math.floor(Math.random()*playlist.length);index=r;}
-    }else{
+  const token=beginMediaCommand();
+  if(!playlist.length){return;}
+
+  // If the current source is already connected, do not wait for the full boot
+  // promise. This keeps the tap on the transport control responsive even while
+  // background artwork/folder work is still finishing.
+  if(!fileMap.has(playlist[index]?.id)){
+    const ready=await ensurePlaybackReady();
+    if(!isCurrentMediaCommand(token)) return;
+    if(!ready){
+      $('status').textContent='재생 파일을 준비하지 못했습니다. 기본 미디어 폴더를 확인해 주세요.';
       return;
     }
-  }else index=next;
+  }
+
+  let next=Math.max(0,Math.min(playlist.length-1,index+delta));
+  const mode=localStorage.getItem('malgussi_mode_v352')||'order';
+  if(next===index){
+    if(mode==='order') next=delta>0?0:playlist.length-1;
+    else if(mode==='random' && playlist.length>1){do{next=Math.floor(Math.random()*playlist.length)}while(next===index)}
+    else return;
+  }
+  index=next;
   try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+
   if(!fileMap.has(playlist[index]?.id)){
     const ok=await reconnectSavedFolderForPlayback();
+    if(!isCurrentMediaCommand(token)) return;
     if(!ok){
-      $('status').textContent='기본 미디어 폴더의 파일을 연결할 수 없습니다. 설정에서 폴더를 다시 지정해 주세요.';
+      $('status').textContent='기본 미디어 폴더에서 이 곡을 찾지 못했습니다.';
       return;
     }
   }
-  await loadCurrent(true,true);
+  if(!isCurrentMediaCommand(token)) return;
+  await loadCurrent(true,true,false);
 }
-$('btnPrev').onclick=async()=>{ await stepTo(-1); };
-$('btnNext').onclick=async()=>{ await stepTo(1); };
+$('btnPrev').onclick=()=>{stepTo(-1);};
+$('btnNext').onclick=()=>{stepTo(1);};
 
 $('btnPlay').onclick=async()=>{
+  const token=beginMediaCommand();
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
-  await ensurePlaybackReady();
+
+  const current=fileMap.get(playlist[index]?.id);
+  if(current){
+    const m=activeMedia||audio;
+    // Critical path: if the current media is already attached, invoke play/pause
+    // directly from this user gesture. Do not await boot/permission first.
+    if(m && m.src){
+      if(!mediaActuallyPlaying){
+        const ok=await playActiveMedia(true);
+        if(isCurrentMediaCommand(token) && ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
+      }else{
+        m.pause();
+        setMediaSessionState('paused');
+        updateUI();
+      }
+      return;
+    }
+  }
+
+  const ready=await ensurePlaybackReady();
+  if(!isCurrentMediaCommand(token)) return;
   const f=fileMap.get(playlist[index]?.id);
-  if(!f){
+  if(!ready || !f){
     const handle=await loadMusicDirectoryHandle();
     if(handle){
       try{
         let p=await handle.queryPermission({mode:'read'});
         if(p!=='granted' && typeof handle.requestPermission==='function') p=await handle.requestPermission({mode:'read'});
         if(p==='granted'){
-          const files=[];
-          for await(const entry of handle.values()) if(entry.kind==='file') files.push(await entry.getFile());
+          const files=await collectDirectoryMedia(handle,'');
           if(files.length){
-            await relinkFromFolder(files);
+            await cacheMediaFiles(files,true);
+            relinkFromFolder(files,true,true);
             const refreshed=fileMap.get(playlist[index]?.id);
-            if(refreshed){ await loadCurrent(true,true); return; }
+            if(refreshed){ await loadCurrent(true,true,false); return; }
           }
         }
       }catch(e){}
@@ -1444,19 +1490,8 @@ $('btnPlay').onclick=async()=>{
     $('folderFiles').click();
     return;
   }
-  const m=activeMedia||audio;
-  if(m.paused){
-    // IMPORTANT: when the user taps the app button, call play() directly from
-    // this gesture before any await/permission flow can consume iOS user
-    // activation. This is especially important for MP4 with audio.
-    const ok=await playActiveMedia(true);
-    if(ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
-  }else{
-    m.pause();
-    setMediaSessionState('paused');
-    updateUI();
-  }
-  updateUI();
+  if(!isCurrentMediaCommand(token)) return;
+  await loadCurrent(true,true,false);
 };
 // V3.54: initial screen no longer exposes a direct file-import button.
 
@@ -1547,7 +1582,9 @@ function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
   let connected=0;
   for(const t of playlist){
     const fn=exactFileName(t.name), nn=normalizeFileName(t.name);
-    let candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
+    let candidates=arr.filter(f=>!used.has(f)&&t.path&&f.webkitRelativePath&&f.webkitRelativePath===t.path);
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
     if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn&&Number(f.size||0)===Number(t.size||0));
     if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
@@ -1557,10 +1594,17 @@ function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
     if(candidates.length===1){fileMap.set(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
   }
   const before=playlist.length;
-  const removed=cleanupMissing ? before - playlist.filter(t=>fileMap.has(t.id)).length : 0;
-  if(cleanupMissing) playlist=playlist.filter(t=>fileMap.has(t.id));
+  const currentIdBeforeCleanup=playlist[index]?.id;
+  const removedIds=cleanupMissing ? new Set(playlist.filter(t=>!fileMap.has(t.id)).map(t=>t.id)) : new Set();
+  const removed=removedIds.size;
+  if(cleanupMissing){
+    playlist=playlist.filter(t=>fileMap.has(t.id));
+    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id)});
+  }
   saveVerifiedScan(arr);
-  if(index>=playlist.length)index=Math.max(0,playlist.length-1);
+  const keptCurrentIndex=playlist.findIndex(t=>t.id===currentIdBeforeCleanup);
+  if(keptCurrentIndex>=0) index=keptCurrentIndex;
+  else if(index>=playlist.length) index=Math.max(0,playlist.length-1);
   saveList(); renderPlaylist(); renderStorageInfo(); updateUI();
   if(!playlist.length){
     $('status').textContent='폴더에서 재생목록 음악을 찾지 못해 목록을 정리했습니다.';
@@ -1790,15 +1834,18 @@ video.addEventListener('timeupdate',syncMediaUI);
 audio.addEventListener('loadedmetadata',syncMediaUI);
 video.addEventListener('loadedmetadata',syncMediaUI);
 audio.addEventListener('play',updateUI);
-audio.addEventListener('pause',updateUI);
+audio.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
+audio.addEventListener('pause',()=>{mediaActuallyPlaying=false;updateUI()});
 video.addEventListener('play',()=>{
   video.controls=false; video.removeAttribute('controls');
   activeMedia=video;
   setMediaSessionState('playing');
   updateUI();
 });
+video.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
 video.addEventListener('pause',()=>{
   activeMedia=video;
+  mediaActuallyPlaying=false;
   setMediaSessionState('paused');
   updateUI();
 });
@@ -1875,17 +1922,19 @@ async function advanceAfterEnd(){
   await loadCurrent(true);
 }
 audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
-audio.addEventListener('pause',()=>{setMediaSessionState('paused');});
+audio.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI();});
+audio.addEventListener('pause',()=>{mediaActuallyPlaying=false;setMediaSessionState('paused');updateUI();});
 video.addEventListener('play',()=>{
   const rb=$('videoRunBtn'); if(rb) rb.classList.remove('show');
   refreshMediaSessionForPlayback(); updatePiPButton(); updateUI();
 });
 video.addEventListener('pause',()=>{
+  mediaActuallyPlaying=false;
   const rb=$('videoRunBtn'); if(rb) rb.classList.add('show');
   setMediaSessionState('paused'); updateUI();
 });
-audio.addEventListener('ended',advanceAfterEnd);
-video.addEventListener('ended',advanceAfterEnd);
+audio.addEventListener('ended',()=>{mediaActuallyPlaying=false;advanceAfterEnd()});
+video.addEventListener('ended',()=>{mediaActuallyPlaying=false;advanceAfterEnd()});
 $('seekBar').addEventListener('input',e=>{
   dragging=true;
   const d=(activeMedia&&activeMedia.duration)||0;
@@ -1902,6 +1951,7 @@ function formatTime(ms){
   return h?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 function showDefaultScreen(){
+  mediaActuallyPlaying=false;
   if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
   audio.pause(); audio.removeAttribute('src'); audio.load();
   video.pause(); video.removeAttribute('src'); video.load();
@@ -1923,8 +1973,9 @@ function updateUI(){
     showDefaultScreen();
   }
   const m=activeMedia||audio;
-  $('btnPlay').classList.toggle('pause',!m.paused&&!!m.src);
-  $('btnPlay').innerHTML=(!m.paused&&m.src)
+  const isPlaying=mediaActuallyPlaying && !!m.src;
+  $('btnPlay').classList.toggle('pause',isPlaying);
+  $('btnPlay').innerHTML=(isPlaying)
     ?'<span class="icon">❚❚</span><span class="label">잠시멈춤</span>'
     :'<span class="icon">▶</span><span class="label">재생</span>';
   $('count').textContent=playlist.length
@@ -1933,7 +1984,7 @@ function updateUI(){
   updateRepeatButton();
 }
 if($('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
-  if(video.paused){
+  if(!mediaActuallyPlaying){
     video.muted=false; video.volume=1;
     const ok=await playActiveMedia(true);
     if(ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
@@ -2036,7 +2087,7 @@ let mediaFiles=[];
       const cached=await loadCachedMediaFiles();
       if(cached.length){
         mediaFiles=cached;
-        relinkFromFolder(cached,false);
+        relinkFromFolder(cached,true);
         if(playlist.every(t=>fileMap.has(t.id))) return true;
       }
     }catch(e){}
@@ -2046,13 +2097,10 @@ let mediaFiles=[];
         let perm='denied';
         try{perm=await h.queryPermission({mode:'read'});}catch(e){}
         if(perm==='granted'){
-          const fs=[];
-          for await(const entry of h.values()){
-            if(entry.kind==='file'){const f=await entry.getFile();if(isMediaFile(f))fs.push(f);}
-          }
+          const fs=await collectDirectoryMedia(h,'');
           if(fs.length){
-            await cacheMediaFiles(fs);
-            relinkFromFolder(fs,false);
+            await cacheMediaFiles(fs,true);
+            relinkFromFolder(fs,true,true);
             if(playlist.every(t=>fileMap.has(t.id))) return true;
           }
         }
@@ -2667,13 +2715,10 @@ let mediaFiles=[];
       // Restore the persistent file cache first. This keeps the playlist connected
       // even when iOS does not restore the directory handle permission immediately.
       const cachedFirst=await loadCachedMediaFiles();
-      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false,true);
+      if(cachedFirst.length) await relinkFromFolder(cachedFirst,true,true);
       if(h && p==='granted'){
-        const files=[];
-        for await(const entry of h.values()){
-          if(entry.kind==='file'){const f=await entry.getFile();if(isMediaFile(f))files.push(f);}
-        }
-        if(files.length){await cacheMediaFiles(files);await relinkFromFolder(files,true,true);}
+        const files=await collectDirectoryMedia(h,'');
+        if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,true,true);}
       }
       if(playlist.length) await loadCurrent(false,false,true);
       else updateUI();
