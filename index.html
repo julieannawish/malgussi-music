@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.05</title>
+<title>말구씨 음악 앱 · V4.06</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.05</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.06</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -783,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.05';
+const APP_VERSION='V4.06';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -811,7 +811,7 @@ let loadedTrackId=null;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.05: serialize/obsolete overlapping transport commands so rapid taps
+// V4.06: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
@@ -906,8 +906,46 @@ function formatBytes(bytes){
   return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
 }
 
+const PLAYLIST_BACKUP_DB='malgussi_playlist_backup_v1';
+const PLAYLIST_BACKUP_STORE='state';
+async function openPlaylistBackupDB(){
+  return await new Promise((resolve,reject)=>{
+    const req=indexedDB.open(PLAYLIST_BACKUP_DB,1);
+    req.onupgradeneeded=()=>req.result.createObjectStore(PLAYLIST_BACKUP_STORE);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function savePlaylistBackup(){
+  try{
+    const db=await openPlaylistBackupDB();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readwrite');
+      tx.objectStore(PLAYLIST_BACKUP_STORE).put(JSON.stringify(playlist),'playlist');
+      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    });
+  }catch(e){ console.warn('savePlaylistBackup',e); }
+}
+async function loadPlaylistBackup(){
+  try{
+    const db=await openPlaylistBackupDB();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readonly');
+      const req=tx.objectStore(PLAYLIST_BACKUP_STORE).get('playlist');
+      req.onsuccess=()=>{
+        try{
+          const value=req.result;
+          const arr=value?JSON.parse(value):[];
+          resolve(Array.isArray(arr)?arr:[]);
+        }catch(e){resolve([])}
+      };
+      req.onerror=()=>reject(req.error);
+    });
+  }catch(e){return []}
+}
 function saveList(){
   localStorage.setItem(KEY,JSON.stringify(playlist));
+  savePlaylistBackup();
 }
 
 function isCurrentMediaCommand(token){ return token===mediaCommandToken; }
@@ -946,6 +984,20 @@ function loadIndex(){
   updateUI();
   renderPlaylist();
   renderStorageInfo();
+}
+
+async function restorePlaylistIfMissing(){
+  if(playlist.length)return false;
+  const backup=await loadPlaylistBackup();
+  if(!backup.length)return false;
+  playlist=backup;
+  setCurrentIndexById(currentTrackId,index);
+  persistCurrentTrack();
+  saveList();
+  renderPlaylist();
+  renderStorageInfo();
+  updateUI();
+  return true;
 }
 
 function renderStorageInfo(){
@@ -1573,6 +1625,10 @@ $('btnPlay').onclick=async()=>{
   try{await appBootReady;}catch(e){}
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
 
+  if(currentTrackId){
+    const resolved=playlist.findIndex(t=>t.id===currentTrackId);
+    if(resolved>=0) index=resolved;
+  }
   const current=fileMap.get(playlist[index]?.id);
   if(current){
     const m=activeMedia||audio;
@@ -1700,7 +1756,7 @@ function renderPlaylist(){
 }
 
 
-// V4.05: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
+// V4.06: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -2127,7 +2183,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.05: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.06: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2152,7 +2208,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=405',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=406',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2263,7 +2319,7 @@ let mediaFiles=[];
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.05: opening playlist management is a UI navigation action only.
+    // V4.06: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
@@ -2289,7 +2345,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.05: do NOT pause audio/video merely because the management screen
+      // V4.06: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2306,7 +2362,7 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.05: if playback was active before entering management, keep it
+      // V4.06: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
@@ -2376,7 +2432,12 @@ let mediaFiles=[];
     };
     requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
     setTimeout(focusAddedRow,120);
-    toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`); updateUI();
+    toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
+    if(playlist.length && fileMap.has(playlist[index]?.id)){
+      try{ await loadCurrent(false,false,true); }catch(err){ console.warn('prepare picker-added media',err); }
+    }else{
+      updateUI();
+    }
   };
   q('mediaFilesPicker').addEventListener('change',async e=>{
     // V3.68 reference behavior: selected files are added immediately.
@@ -2422,7 +2483,11 @@ let mediaFiles=[];
     requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
     setTimeout(focusAddedRow,120);
     toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
-    updateUI();
+    if(playlist.length && fileMap.has(playlist[index]?.id)){
+      try{ await loadCurrent(false,false,true); }catch(err){ console.warn('prepare added media',err); }
+    }else{
+      updateUI();
+    }
   });
   q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
   q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
@@ -2865,9 +2930,11 @@ let mediaFiles=[];
     renderPL();renderStorageInfo();updateUI();
     toast2(`중복 ${dupIds.size}곡을 삭제했습니다.`);
   };
-  q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);playlist=[];fileMap.clear();mediaFiles=[];playlistPickerFiles=[];psel.clear();msel.clear();pmsel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
+  q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);loadPlaylistBackup().then(()=>openPlaylistBackupDB()).then(db=>{try{const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readwrite');tx.objectStore(PLAYLIST_BACKUP_STORE).delete('playlist')}catch(e){}});localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);playlist=[];fileMap.clear();mediaFiles=[];playlistPickerFiles=[];psel.clear();msel.clear();pmsel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
   async function bootMalgussi(){
-    loadFolderMeta2();renderMedia();renderPL();updateMode();applyProf(); if(q('appVersion')) q('appVersion').textContent=APP_VERSION;
+    loadFolderMeta2();
+    await restorePlaylistIfMissing();
+    renderMedia();renderPL();updateMode();applyProf(); if(q('appVersion')) q('appVersion').textContent=APP_VERSION;
     try{
       const h=await loadMusicDirectoryHandle();
       let p='denied';
