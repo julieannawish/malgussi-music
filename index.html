@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.01</title>
+<title>말구씨 음악 앱 · V4.02</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.01</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.02</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -588,8 +588,10 @@ async function toggleFullscreen(){
 }
 function updateFullscreenButton(){
   const b=$('btnFullscreen'); if(!b)return;
-  const hasMedia=!!(playlist.length && (activeMedia?.src || fileMap.has(playlist[index]?.id)));
-  b.disabled=!hasMedia; b.style.opacity=hasMedia?'1':'.5';
+  const f=playlist[index] ? fileMap.get(playlist[index].id) : null;
+  const isVideo=!!(f && isVideoFile(f));
+  b.style.display=isVideo?'flex':'none';
+  b.disabled=!isVideo;
 }
 
 function mediaSessionSupported(){
@@ -627,16 +629,8 @@ function setupMediaSessionHandlers(){
   });
   // Register only track actions so iPhone can show Previous / Play / Next
   // rather than replacing them with seek controls.
-  safe('previoustrack',()=>{
-    if(!playlist.length)return;
-    index=(index-1+playlist.length)%playlist.length;
-    loadCurrent(true,true);
-  });
-  safe('nexttrack',()=>{
-    if(!playlist.length)return;
-    index=(index+1)%playlist.length;
-    loadCurrent(true,true);
-  });
+  safe('previoustrack',async()=>{try{await appBootReady; await stepTo(-1);}catch(e){}});
+  safe('nexttrack',async()=>{try{await appBootReady; await stepTo(1);}catch(e){}});
 }
 
 function refreshMediaSessionForPlayback(){
@@ -789,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.01';
+const APP_VERSION='V4.02';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -814,7 +808,7 @@ let index=0;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.01: serialize/obsolete overlapping transport commands so rapid taps
+// V4.02: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
@@ -1517,11 +1511,12 @@ async function stepTo(delta){
   if(!isCurrentMediaCommand(token)) return;
   await loadCurrent(true,true,false);
 }
-$('btnPrev').onclick=()=>{stepTo(-1);};
-$('btnNext').onclick=()=>{stepTo(1);};
+$('btnPrev').onclick=async()=>{try{await appBootReady;}catch(e){} await stepTo(-1);};
+$('btnNext').onclick=async()=>{try{await appBootReady;}catch(e){} await stepTo(1);};
 
 $('btnPlay').onclick=async()=>{
   const token=beginMediaCommand();
+  try{await appBootReady;}catch(e){}
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
 
   const current=fileMap.get(playlist[index]?.id);
@@ -1555,14 +1550,14 @@ $('btnPlay').onclick=async()=>{
           const files=await collectDirectoryMedia(handle,'');
           if(files.length){
             await cacheMediaFiles(files,true);
-            relinkFromFolder(files,true,true);
+            relinkFromFolder(files,false,true);
             const refreshed=fileMap.get(playlist[index]?.id);
             if(refreshed){ await loadCurrent(true,true,false); return; }
           }
         }
       }catch(e){}
     }
-    $('status').textContent='음악 폴더를 선택해 주세요.';
+    $('status').textContent=playlist.length?'재생목록은 유지되어 있습니다. 기본 미디어 폴더에서 원본을 연결해 주세요.':'음악 폴더를 선택해 주세요.';
     $('folderFiles').click();
     return;
   }
@@ -1647,7 +1642,7 @@ function renderPlaylist(){
 }
 
 
-// V4.01: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
+// V4.02: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -1704,7 +1699,7 @@ async function relinkFolder(){
   // because the transient user activation has expired.
   const picker=$('folderFiles');
   if(!('showDirectoryPicker' in window)){
-    $('status').textContent='음악 폴더를 선택해 주세요.';
+    $('status').textContent=playlist.length?'재생목록은 유지되어 있습니다. 기본 미디어 폴더에서 원본을 연결해 주세요.':'음악 폴더를 선택해 주세요.';
     picker.click();
     return;
   }
@@ -2074,7 +2069,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.01: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.02: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2099,7 +2094,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=401',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=402',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2209,7 +2204,7 @@ let mediaFiles=[];
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.01: opening playlist management is a UI navigation action only.
+    // V4.02: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
@@ -2235,7 +2230,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.01: do NOT pause audio/video merely because the management screen
+      // V4.02: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2252,7 +2247,7 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.01: if playback was active before entering management, keep it
+      // V4.02: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
@@ -2818,7 +2813,7 @@ let mediaFiles=[];
       // Restore the persistent file cache first. This keeps the playlist connected
       // even when iOS does not restore the directory handle permission immediately.
       const cachedFirst=await loadCachedMediaFiles();
-      if(cachedFirst.length) await relinkFromFolder(cachedFirst,true,true);
+      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false,true);
       if(h && p==='granted'){
         const files=await collectDirectoryMedia(h,'');
         if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,false,true);}
