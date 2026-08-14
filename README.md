@@ -1,6 +1,6 @@
-# 말구씨 음악앱 V4.14
+# 말구씨 음악앱 V4.17
 
-## V4.14 — 기본 폴더 하위 폴더 MP4 재연결/캐시 구조 수정
+## V4.17 — 기본 폴더 하위 폴더 MP4 재연결/캐시 구조 수정
 
 이번 버전의 핵심은 **기본 폴더를 휴대폰 최상위 폴더로 지정하고 그 아래 하위·하위하위 폴더의 MP4를 재생목록에 넣은 뒤 앱을 다시 실행했을 때 `원본 없음`으로 바뀌는 문제**입니다.
 
@@ -112,3 +112,12 @@ V4.13은 V4.13의 회귀 방지 기준을 유지하면서, 재생 상태 보존�
 ## V4.13
 - Unified track file resolver and non-destructive relink.
 - Re-selecting an existing file reconnects its playlist track instead of ignoring it.
+
+
+## V4.17 QA
+- Fixed main-screen transport controls racing asynchronous boot/relink.
+- Boot now waits for source mapping before declaring playback ready.
+- Play/Previous/Next no longer depend on visiting playlist management or dragging rows to give boot time to finish.
+
+## V4.17
+- Critical File resolution and startup media binding fix.

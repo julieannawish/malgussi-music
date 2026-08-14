@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.14</title>
+<title>말구씨 음악 앱 · V4.17</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.14</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.17</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -744,7 +744,7 @@ async function openMediaCacheDB(){
   });
 }
 async function cacheMediaFiles(files,replaceAll=true){
-  // V4.14: never let one large MP4 abort the entire folder cache transaction.
+  // V4.17: never let one large MP4 abort the entire folder cache transaction.
   // Cache only files independently; playlist-linked files are additionally stored by trackId.
   try{
     const arr=Array.from(files||[]).filter(isMediaFile);
@@ -831,6 +831,9 @@ async function loadTrackFileFromCacheAPI(trackId){
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f))return false;
   let idbOk=false, apiOk=false;
+  // V4.17: write to BOTH persistent stores. The old code wrote to Cache API
+  // only when IndexedDB failed, so an IndexedDB write that later could not be
+  // restored left the playlist with no usable MP4 on relaunch.
   try{
     const db=await openTrackCacheDB();
     await new Promise((resolve,reject)=>{
@@ -839,10 +842,14 @@ async function saveTrackFile(trackId,f){
         blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,
         type:f.type||'',path:f.webkitRelativePath||f.name,trackId
       },trackId);
-      tx.oncomplete=()=>{idbOk=true;resolve();}; tx.onerror=()=>reject(tx.error);
+      tx.oncomplete=()=>{idbOk=true;resolve();};
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
     });
   }catch(e){console.warn('saveTrackFile idb',e);}
-  if(!idbOk) apiOk=await saveTrackFileToCacheAPI(trackId,f);
+  try{
+    apiOk=await saveTrackFileToCacheAPI(trackId,f);
+  }catch(e){console.warn('saveTrackFile cache-api',e);}
   return idbOk||apiOk;
 }
 async function loadTrackFile(trackId){
@@ -862,7 +869,7 @@ async function loadTrackFile(trackId){
       };
       req.onerror=()=>reject(req.error);
     });
-    if(f)return f;
+    if(f && Number(f.size||0)>0)return f;
   }catch(e){}
   return await loadTrackFileFromCacheAPI(trackId);
 }
@@ -912,7 +919,12 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.14';
+// V4.17 persistence invariant:
+// A playlist item is considered relinkable only when its trackId points to a
+// persisted File in IndexedDB or Cache Storage, OR when the saved folder can
+// deterministically rediscover the same file. Adding a file therefore always
+// calls saveTrackFile(trackId,file) before the add operation reports success.
+const APP_VERSION='V4.17';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1351,8 +1363,7 @@ function findExistingByFile(f){
   // Never guess when duplicate names exist.
   return null;
 }
-async 
-function reconnectSelectedFiles(selectedFiles){
+async function reconnectSelectedFiles(selectedFiles){
   const files=[...selectedFiles].filter(f=>isMediaFile(f));
   let reconnected=0, added=0;
   for(const f of files){
@@ -1360,7 +1371,7 @@ function reconnectSelectedFiles(selectedFiles){
     const existing=playlist.find(t=>normalizeFileName(t.name)===key);
     if(existing){
       fileMap.set(existing.id,f);
-      saveTrackFile(existing.id,f).catch(()=>{});
+      await saveTrackFile(existing.id,f);
       existing.name=f.name;
       existing.size=f.size;
       existing.type=f.type||existing.type||'';
@@ -1371,7 +1382,7 @@ function reconnectSelectedFiles(selectedFiles){
       const track={id:id,name:f.name,size:f.size,type:f.type||'',lastModified:f.lastModified||0};
       playlist.push(track);
       fileMap.set(id,f);
-      saveTrackFile(id,f).catch(()=>{});
+      await saveTrackFile(id,f);
       added++;
     }
   }
@@ -1546,9 +1557,14 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   const t=playlist[index];
   currentTrackId=t?.id||null;
   persistCurrentTrack();
-  const f=fileMap.get(t.id);
+  let f=null;
+  try{ f=await resolveTrackFile(t); }catch(e){ console.warn('resolveTrackFile',e); }
   loadedTrackId=null;
 
+  if(f){
+    fileMap.set(t.id,f);
+    try{ await saveTrackFile(t.id,f); }catch(e){}
+  }
   if(!f){
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
     audio.pause(); audio.removeAttribute('src'); audio.load();
@@ -1754,7 +1770,11 @@ async function reconnectSavedFolderForPlayback(){
 let appBootReady=Promise.resolve();
 
 async function ensurePlaybackReady(options={}){
-  const waitForBoot=options.waitForBoot===true;
+  // Main-screen transport controls must not race the asynchronous boot/relink
+  // process. The old behavior let a fast tap run while fileMap was still being
+  // restored; entering playlist management and dragging then merely gave boot
+  // enough time to finish, which made it look as if drag-and-drop fixed playback.
+  const waitForBoot=options.waitForBoot!==false;
   if(waitForBoot){try{await appBootReady;}catch(e){}}
   if(!playlist.length)return false;
   const t=playlist[index];
@@ -1773,7 +1793,7 @@ async function stepTo(delta){
   if(!playlist.length)return;
 
   if(!fileMap.has(playlist[index]?.id)){
-    const ready=await ensurePlaybackReady({waitForBoot:false});
+    const ready=await ensurePlaybackReady({waitForBoot:true});
     if(!isCurrentMediaCommand(token))return;
     if(!ready){
       $('status').textContent='재생 파일을 준비하지 못했습니다. 기본 미디어 폴더를 확인해 주세요.';
@@ -1933,7 +1953,7 @@ function renderPlaylist(){
 // V4.07: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
-function relinkFromFolder(files, cleanupMissing=false, fastBoot=false){
+async function relinkFromFolder(files, cleanupMissing=false, fastBoot=false){
   saveRecentFolderMeta(files);
   const arr=Array.from(files||[]).filter(isMediaFile);
   if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 또는 MP4 동영상을 찾지 못했습니다.'; return; }
@@ -1944,15 +1964,15 @@ function relinkFromFolder(files, cleanupMissing=false, fastBoot=false){
   for(const t of playlist){
     const fn=exactFileName(t.name), nn=normalizeFileName(t.name);
     let candidates=arr.filter(f=>!used.has(f)&&t.path&&f.webkitRelativePath&&f.webkitRelativePath===t.path);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);saveTrackFile(t.id,candidates[0]).catch(()=>{});used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
   }
   saveVerifiedScan(arr);
   saveList(); renderPlaylist(); renderStorageInfo(); updateUI();
@@ -2397,6 +2417,7 @@ function updateUI(){
     ?`${playlist.length}곡 중 ${index+1}곡`
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
+  syncMediaUI();
 }
 if(false && $('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
   if(!mediaActuallyPlaying){
@@ -2423,6 +2444,21 @@ window.addEventListener('pagehide',()=>{
   // Intentionally no pause here: leaving the app is not a stop command.
 });
 loadIndex();
+(async function bootCurrentMedia(){
+  try{
+    await restorePlaylistIfMissing();
+    if(playlist.length){
+      await ensurePlaylistSources();
+      await loadCurrent(false,false,true);
+    }
+    updateUI();
+    syncMediaUI();
+  }catch(e){
+    console.warn('bootCurrentMedia',e);
+    updateUI();
+    syncMediaUI();
+  }
+})();
 
 </script>
 
@@ -2514,7 +2550,7 @@ let mediaFiles=[];
       const cached=await loadCachedMediaFiles();
       if(cached.length){
         mediaFiles=cached;
-        relinkFromFolder(cached,false);
+        await relinkFromFolder(cached,false);
         if(playlist.every(t=>fileMap.has(t.id))) return true;
       }
     }catch(e){}
@@ -2526,7 +2562,7 @@ let mediaFiles=[];
         if(perm==='granted'){
           const fs=await collectDirectoryMedia(h,'');
           if(fs.length){
-            relinkFromFolder(fs,false,true);
+            await relinkFromFolder(fs,false,true);
             await cacheLinkedPlaylistFiles(fs);
             if(playlist.every(t=>fileMap.has(t.id))) return true;
           }
@@ -2650,6 +2686,15 @@ let mediaFiles=[];
     }
     
     saveList();
+    // V4.17: every newly-added track must be persisted by its own trackId.
+    // The previous add path only cached the folder and skipped saveTrackFile(),
+    // which is why an MP4 could exist immediately after adding but become
+    // '원본 없음' after the next app launch.
+    let persistOk=0;
+    for(const id of newItems){
+      const f=fileMap.get(id);
+      if(f && await saveTrackFile(id,f)) persistOk++;
+    }
     try{await cacheMediaFiles(selected,false);}catch(err){console.warn('cache selected media',err)}
     close('v352PlaylistPicker'); q('v352Playlist').classList.add('open'); q('v352Playlist').setAttribute('aria-hidden','false');
     psel.clear(); renderPL();
@@ -2669,6 +2714,11 @@ let mediaFiles=[];
     };
     requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
     setTimeout(focusAddedRow,120);
+    if(persistOk<newItems.length){
+      $('status').textContent=`${newItems.length}곡을 추가했습니다. 현재 재생은 가능하지만 ${newItems.length-persistOk}곡의 재실행 복원 저장에 실패했습니다.`;
+    }else{
+      $('status').textContent='추가한 곡의 재실행 복원 정보를 저장했습니다.';
+    }
     toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
     updateUI();
     if(playlist.length && fileMap.has(playlist[index]?.id)){
@@ -2694,13 +2744,13 @@ let mediaFiles=[];
         existing.type=f.type||existing.type||'';
         existing.lastModified=Number(f.lastModified)||existing.lastModified||0;
         existing.path=f.webkitRelativePath||existing.path||f.name;
-        saveTrackFile(existing.id,f).catch(()=>{});
+        await saveTrackFile(existing.id,f);
         continue;
       }
       const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
       playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
       fileMap.set(id,f);
-      saveTrackFile(id,f).catch(()=>{});
+      await saveTrackFile(id,f);
       newItems.push(id);
     }
     if(!newItems.length){ toast2('선택한 곡은 이미 재생목록에 있습니다.'); return; }
@@ -2888,7 +2938,7 @@ let mediaFiles=[];
         await saveMusicDirectoryHandle(h);
         const fs=await collectDirectoryMedia(h,'');
         saveFolderMeta2(fs);
-        relinkFromFolder(fs,false,true);
+        await relinkFromFolder(fs,false,true);
         await cacheLinkedPlaylistFiles(fs);
         return;
       }catch(e){}
@@ -3204,16 +3254,22 @@ let mediaFiles=[];
       // wait for the user's next Play/Next/Add tap to request permission.
       // Restore the persistent file cache first. This keeps the playlist connected
       // even when iOS does not restore the directory handle permission immediately.
-      // V4.14: restore exact trackId -> File mapping first. The playlist must
+      // V4.17: restore exact trackId -> File mapping first. The playlist must
       // never be shown as playable until this mapping has had a chance to load.
       await restoreTrackFileMap();
       const cachedFirst=await loadCachedMediaFiles();
-      if(cachedFirst.length) relinkFromFolder(cachedFirst,false,true);
+      if(cachedFirst.length) await relinkFromFolder(cachedFirst,false,true);
       if(h && p==='granted'){
         const files=await collectDirectoryMedia(h,'');
-        if(files.length){relinkFromFolder(files,false,true);await cacheLinkedPlaylistFiles(files);}
+        if(files.length){await relinkFromFolder(files,false,true);await cacheLinkedPlaylistFiles(files);}
       }
       // A final exact restore wins over any filename-based relink.
+      await restoreTrackFileMap();
+      // IMPORTANT: boot must settle the source mapping before the main screen
+      // becomes interactive. Previously a drag in playlist management only
+      // appeared to fix the buttons because it gave this async work time to
+      // finish.
+      await ensurePlaylistSources();
       await restoreTrackFileMap();
       if(playlist.length && fileMap.has(playlist[index]?.id)){
         await loadCurrent(false,false,true);
