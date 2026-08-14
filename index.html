@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.07</title>
+<title>말구씨 음악 앱 · V4.11</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.09</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.11</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -783,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.09';
+const APP_VERSION='V4.11';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -869,6 +869,9 @@ function showArtworkFrame(){
 function setMediaSource(f){
   if(objectUrl)URL.revokeObjectURL(objectUrl);
   objectUrl=URL.createObjectURL(f);
+  $('tvPosition').textContent='00:00';
+  $('tvDuration').textContent='00:00';
+  $('seekBar').value=0;
 
   audio.pause();
   if(activeMedia===audio) mediaActuallyPlaying=false;
@@ -1379,6 +1382,7 @@ async function playActiveMedia(fromUserGesture=false){
     });
     if(!actuallyPlaying) throw new Error('media did not enter playing state');
     mediaActuallyPlaying=true;
+    syncMediaUI();
     if(m===video){
       // While video is playing, the in-frame 실행 overlay must disappear.
       // The outside player control is the single pause/play control.
@@ -1495,6 +1499,7 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   }
 
   activeMedia.load();
+  syncMediaUI();
   let playSucceeded=false;
   if(isVideoFile(f)){
     // IMPORTANT: merely loading/relinking a playlist item must NOT start MP4.
@@ -1612,10 +1617,10 @@ async function stepTo(delta){
     }
   }
   if(!isCurrentMediaCommand(token))return;
-  await loadCurrent(true,true,false);
+  await loadCurrent(true,true,true);
 }
-$('btnPrev').onclick=async()=>{await stepTo(-1);};
-$('btnNext').onclick=async()=>{await stepTo(1);};
+$('btnPrev').onclick=async(e)=>{e?.preventDefault?.();await stepTo(-1);};
+$('btnNext').onclick=async(e)=>{e?.preventDefault?.();await stepTo(1);};
 
 $('btnPlay').onclick=async()=>{
   const token=beginMediaCommand();
@@ -1648,7 +1653,7 @@ $('btnPlay').onclick=async()=>{
       return;
     }
     if(current){
-      await loadCurrent(true,true,false);
+      await loadCurrent(true,true,true);
       return;
     }
   }
@@ -1668,7 +1673,7 @@ $('btnPlay').onclick=async()=>{
             await cacheMediaFiles(files,true);
             relinkFromFolder(files,false,true);
             const refreshed=fileMap.get(playlist[index]?.id);
-            if(refreshed){ await loadCurrent(true,true,false); return; }
+            if(refreshed){ await loadCurrent(true,true,true); return; }
           }
         }
       }catch(e){}
@@ -1678,7 +1683,7 @@ $('btnPlay').onclick=async()=>{
     return;
   }
   if(!isCurrentMediaCommand(token)) return;
-  await loadCurrent(true,true,false);
+  await loadCurrent(true,true,true);
 };
 // V3.54: initial screen no longer exposes a direct file-import button.
 
@@ -2007,17 +2012,32 @@ function cancelDrag(){
   dragRow=null;dragIndex=null;dragMode=null;dragMoved=false;
 }
 
+let progressRAF=0;
 function syncMediaUI(){
   const m=activeMedia||audio;
-  const d=m.duration||0,p=m.currentTime||0;
-  if(!dragging)$('seekBar').value=d?Math.round(p/d*1000):0;
+  if(!m)return;
+  const d=Number.isFinite(m.duration)&&m.duration>0?m.duration:0;
+  const p=Number.isFinite(m.currentTime)&&m.currentTime>=0?m.currentTime:0;
+  if(!dragging)$('seekBar').value=d?Math.min(1000,Math.max(0,Math.round(p/d*1000))):0;
   $('tvPosition').textContent=formatTime(p*1000);
   $('tvDuration').textContent=formatTime(d*1000);
 }
-audio.addEventListener('timeupdate',syncMediaUI);
-video.addEventListener('timeupdate',syncMediaUI);
-audio.addEventListener('loadedmetadata',syncMediaUI);
-video.addEventListener('loadedmetadata',syncMediaUI);
+function startProgressSync(){
+  if(progressRAF)return;
+  const tick=()=>{
+    progressRAF=requestAnimationFrame(tick);
+    const m=activeMedia||audio;
+    if(m) syncMediaUI();
+  };
+  progressRAF=requestAnimationFrame(tick);
+}
+startProgressSync();
+[
+  [audio,'loadedmetadata'],[audio,'durationchange'],[audio,'loadeddata'],
+  [audio,'canplay'],[audio,'timeupdate'],[audio,'playing'],[audio,'progress'],
+  [video,'loadedmetadata'],[video,'durationchange'],[video,'loadeddata'],
+  [video,'canplay'],[video,'timeupdate'],[video,'playing'],[video,'progress']
+].forEach(([el,ev])=>el.addEventListener(ev,syncMediaUI));
 audio.addEventListener('play',updateUI);
 audio.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
 audio.addEventListener('pause',()=>{mediaActuallyPlaying=false;updateUI()});
@@ -2236,7 +2256,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=407',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=411',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2985,10 +3005,10 @@ let mediaFiles=[];
         const files=await collectDirectoryMedia(h,'');
         if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,false,true);}
       }
-      if(playlist.length) await loadCurrent(false,false,true);
+      if(playlist.length){await loadCurrent(false,false,true);syncMediaUI();}
       else updateUI();
     }catch(e){
-      if(playlist.length) await loadCurrent(false,false,true);
+      if(playlist.length){await loadCurrent(false,false,true);syncMediaUI();}
       else updateUI();
     }
   }
