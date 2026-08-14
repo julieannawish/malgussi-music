@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.02</title>
+<title>말구씨 음악 앱 · V4.03</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.02</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.03</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -783,9 +783,10 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.02';
+const APP_VERSION='V4.03';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
+const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
 const $=id=>document.getElementById(id);
 const audio=$('audio');
@@ -805,15 +806,32 @@ let playlist=[];      // index records only: {id,name,size,lastModified,type}
 let fileMap=new Map(); // File objects live only for the current session
 let artworkMap=new Map();
 let index=0;
+let currentTrackId=null;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.02: serialize/obsolete overlapping transport commands so rapid taps
+// V4.03: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
 let mediaActuallyPlaying=false;
 
+function persistCurrentTrack(){
+  const t=playlist[index];
+  currentTrackId=t?.id||null;
+  try{
+    if(currentTrackId)localStorage.setItem(CURRENT_TRACK_ID_KEY,currentTrackId);
+    else localStorage.removeItem(CURRENT_TRACK_ID_KEY);
+    localStorage.setItem(CURRENT_INDEX_KEY,String(index));
+  }catch(e){}
+}
+function setCurrentIndexById(id,fallbackIndex=0){
+  if(!playlist.length){index=0;currentTrackId=null;return -1;}
+  const found=id?playlist.findIndex(t=>t.id===id):-1;
+  index=found>=0?found:Math.max(0,Math.min(fallbackIndex,playlist.length-1));
+  currentTrackId=playlist[index]?.id||null;
+  return index;
+}
 function isVideoFile(f){
   const n=(f.name||'').toLowerCase();
   const ext=n.includes('.')?n.slice(n.lastIndexOf('.')):'';
@@ -919,7 +937,11 @@ function loadIndex(){
     playlist=raw?JSON.parse(raw):[];
     if(!Array.isArray(playlist))playlist=[];
   }catch(e){playlist=[]}
-  try{index=Math.max(0,Math.min(Number(localStorage.getItem(CURRENT_INDEX_KEY)||0),Math.max(0,playlist.length-1)));}catch(e){index=0;}
+  let savedId=null,savedIndex=0;
+  try{savedId=localStorage.getItem(CURRENT_TRACK_ID_KEY)||null;}catch(e){}
+  try{savedIndex=Number(localStorage.getItem(CURRENT_INDEX_KEY)||0);}catch(e){}
+  setCurrentIndexById(savedId,savedIndex);
+  persistCurrentTrack();
   updateUI();
   renderPlaylist();
   renderStorageInfo();
@@ -1315,6 +1337,8 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   index=Math.max(0,Math.min(index,playlist.length-1));
   try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
   const t=playlist[index];
+  currentTrackId=t?.id||null;
+  persistCurrentTrack();
   const f=fileMap.get(t.id);
 
   if(!f){
@@ -1476,39 +1500,46 @@ async function ensurePlaybackReady(){
 
 async function stepTo(delta){
   const token=beginMediaCommand();
-  if(!playlist.length){return;}
+  if(!playlist.length)return;
 
-  // If the current source is already connected, do not wait for the full boot
-  // promise. This keeps the tap on the transport control responsive even while
-  // background artwork/folder work is still finishing.
   if(!fileMap.has(playlist[index]?.id)){
     const ready=await ensurePlaybackReady();
-    if(!isCurrentMediaCommand(token)) return;
+    if(!isCurrentMediaCommand(token))return;
     if(!ready){
       $('status').textContent='재생 파일을 준비하지 못했습니다. 기본 미디어 폴더를 확인해 주세요.';
       return;
     }
   }
 
-  let next=Math.max(0,Math.min(playlist.length-1,index+delta));
   const mode=localStorage.getItem('malgussi_mode_v352')||'order';
-  if(next===index){
-    if(mode==='order') next=delta>0?0:playlist.length-1;
-    else if(mode==='random' && playlist.length>1){do{next=Math.floor(Math.random()*playlist.length)}while(next===index)}
-    else return;
+  const currentId=currentTrackId||playlist[index]?.id;
+  const baseIndex=playlist.findIndex(t=>t.id===currentId);
+  const base=baseIndex>=0?baseIndex:index;
+  let next=base+delta;
+
+  if(mode==='order'){
+    next=(next+playlist.length)%playlist.length;
+  }else if(mode==='random'){
+    if(playlist.length<=1)next=base;
+    else{do{next=Math.floor(Math.random()*playlist.length)}while(next===base);}
+  }else{
+    if(next<0||next>=playlist.length)return;
   }
+
   index=next;
-  try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+  currentTrackId=playlist[index]?.id||null;
+  persistCurrentTrack();
 
   if(!fileMap.has(playlist[index]?.id)){
     const ok=await reconnectSavedFolderForPlayback();
-    if(!isCurrentMediaCommand(token)) return;
+    if(!isCurrentMediaCommand(token))return;
     if(!ok){
       $('status').textContent='기본 미디어 폴더에서 이 곡을 찾지 못했습니다.';
+      updateUI();
       return;
     }
   }
-  if(!isCurrentMediaCommand(token)) return;
+  if(!isCurrentMediaCommand(token))return;
   await loadCurrent(true,true,false);
 }
 $('btnPrev').onclick=async()=>{try{await appBootReady;}catch(e){} await stepTo(-1);};
@@ -1642,7 +1673,7 @@ function renderPlaylist(){
 }
 
 
-// V4.02: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
+// V4.03: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -1793,6 +1824,8 @@ function finishDrag(clientY){
     if(index===from)index=to;
     else if(from<index&&index<=to)index--;
     else if(to<=index&&index<from)index++;
+    setCurrentIndexById(movingCurrentId,index);
+    persistCurrentTrack();
     saveList();
   }
   clearDropTargets();
@@ -1985,13 +2018,13 @@ async function advanceAfterEnd(){
     let next=index;
     while(next===index) next=Math.floor(Math.random()*playlist.length);
     index=next;
-    try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+    persistCurrentTrack();
     await loadCurrent(true);
     return;
   }
   // order repeat
   index=(index+1)%playlist.length;
-  try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(e){}
+  persistCurrentTrack();
   await loadCurrent(true);
 }
 audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
@@ -2042,6 +2075,10 @@ function showDefaultScreen(){
 }
 
 function updateUI(){
+  if(playlist.length && currentTrackId){
+    const resolved=playlist.findIndex(t=>t.id===currentTrackId);
+    if(resolved>=0)index=resolved;
+  }
   if(!playlist.length){
     showDefaultScreen();
   }
@@ -2069,7 +2106,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.02: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.03: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2094,7 +2131,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=402',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=403',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2197,18 +2234,19 @@ let mediaFiles=[];
     const box=q('v352PlaylistList');
     if(!box || !playlist.length) return;
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      const row=box.querySelector(`.v352-pl-row[data-i="${index}"]`);
+      const ci=playlist.findIndex(t=>t.id===currentTrackId);
+      const row=box.querySelector(`.v352-pl-row[data-i="${ci}"]`);
       if(row) row.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});
     }));
   }
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.02: opening playlist management is a UI navigation action only.
+    // V4.03: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
-      playlistOpenedIndex=index;
+      playlistOpenedIndex=index; playlistOpenedTrackId=currentTrackId;
     }
     // V3.88: management screens are mutually exclusive. The playlist picker
     // must appear above/after the playlist screen instead of being painted
@@ -2230,7 +2268,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.02: do NOT pause audio/video merely because the management screen
+      // V4.03: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2247,12 +2285,12 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.02: if playback was active before entering management, keep it
+      // V4.03: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
-      const changedIndex=index!==playlistOpenedIndex;
-      if(changedIndex){
+      const changedTrack=currentTrackId!==playlistOpenedTrackId;
+      if(changedTrack){
         const f=fileMap.get(playlist[index]?.id);
         if(f){ try{ await loadCurrent(true,true); }catch(e){} }
       }else if(playlistWasPlaying){
@@ -2261,7 +2299,7 @@ let mediaFiles=[];
           try{ await playActiveMedia(true); }catch(e){}
         }
       }
-      playlistWasPlaying=false; playlistOpenedIndex=-1;
+      playlistWasPlaying=false; playlistOpenedIndex=-1; playlistOpenedTrackId=null;
     }
   }
   window.openV352Playlist=()=>open('v352Playlist');
@@ -2632,7 +2670,7 @@ let mediaFiles=[];
     if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return;}
     playlist.forEach((t,i)=>{
       const row=document.createElement('div');
-      row.className='v352-pl-row'+(psel.has(t.id)?' sel':'')+(i===index?' current-playing':'');
+      row.className='v352-pl-row'+(psel.has(t.id)?' sel':'')+(t.id===currentTrackId?' current-playing':'');
       row.dataset.i=i;
       const c=document.createElement('button');
       c.className='v352-check'+(psel.has(t.id)?' on':'');
@@ -2656,7 +2694,8 @@ let mediaFiles=[];
       row.addEventListener('click',async e=>{
         if(e.target.closest('.v352-check')||e.target.closest('.v352-drag'))return;
         index=i;
-        try{localStorage.setItem(CURRENT_INDEX_KEY,String(index));}catch(err){}
+        currentTrackId=t.id;
+        persistCurrentTrack();
         if(!fileMap.has(t.id)){
           const ok=await reconnectSavedFolderForPlayback();
           if(!ok){q('status').textContent='이 곡의 원본 파일을 연결할 수 없습니다.';return;}
