@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.04</title>
+<title>말구씨 음악 앱 · V4.05</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.04</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.05</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -783,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.04';
+const APP_VERSION='V4.05';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -807,10 +807,11 @@ let fileMap=new Map(); // File objects live only for the current session
 let artworkMap=new Map();
 let index=0;
 let currentTrackId=null;
+let loadedTrackId=null;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.04: serialize/obsolete overlapping transport commands so rapid taps
+// V4.05: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
@@ -1360,6 +1361,7 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   currentTrackId=t?.id||null;
   persistCurrentTrack();
   const f=fileMap.get(t.id);
+  loadedTrackId=null;
 
   if(!f){
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
@@ -1387,6 +1389,7 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
 
   if(loadToken!==mediaLoadToken) return false;
   setMediaSource(f);
+  loadedTrackId=t.id;
   $('now').textContent=t.name;
   $('count').textContent=`${playlist.length}곡 중 ${index+1}곡`;
 
@@ -1575,7 +1578,7 @@ $('btnPlay').onclick=async()=>{
     const m=activeMedia||audio;
     // Critical path: if the current media is already attached, invoke play/pause
     // directly from this user gesture. Do not await boot/permission first.
-    if(m && m.src){
+    if(m && m.src && loadedTrackId===playlist[index]?.id){
       if(!mediaActuallyPlaying){
         const ok=await playActiveMedia(true);
         if(isCurrentMediaCommand(token) && ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
@@ -1584,6 +1587,10 @@ $('btnPlay').onclick=async()=>{
         setMediaSessionState('paused');
         updateUI();
       }
+      return;
+    }
+    if(current){
+      await loadCurrent(true,true,false);
       return;
     }
   }
@@ -1693,7 +1700,7 @@ function renderPlaylist(){
 }
 
 
-// V4.04: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
+// V4.05: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -1701,7 +1708,7 @@ function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
   const arr=Array.from(files||[]).filter(isMediaFile);
   if(!arr.length){ $('status').textContent='선택한 폴더에서 음악 또는 MP4 동영상을 찾지 못했습니다.'; return; }
   $('status').textContent=`폴더의 음악 ${arr.length}개와 재생목록을 자동으로 비교하는 중입니다…`;
-  fileMap.clear();
+  if(cleanupMissing) fileMap.clear();
   const used=new Set();
   let connected=0;
   for(const t of playlist){
@@ -1759,10 +1766,7 @@ async function relinkFolder(){
   if(await canUseSavedMusicDirectory()){
     try{
       const handle=await loadMusicDirectoryHandle();
-      const files=[];
-      for await(const entry of handle.values()){
-        if(entry.kind==='file') files.push(await entry.getFile());
-      }
+      const files=await collectDirectoryMedia(handle,'');
       if(files.length){
         await relinkFromFolder(files);
         $('status').textContent='최근 음악 폴더를 자동으로 확인했습니다.';
@@ -1774,10 +1778,7 @@ async function relinkFolder(){
   try{
     const handle=await window.showDirectoryPicker({mode:'read'});
     await saveMusicDirectoryHandle(handle);
-    const files=[];
-    for await(const entry of handle.values()){
-      if(entry.kind==='file') files.push(await entry.getFile());
-    }
+    const files=await collectDirectoryMedia(handle,'');
     await relinkFromFolder(files);
   }catch(e){
     $('status').textContent='음악 폴더 선택이 취소되었습니다.';
@@ -2126,7 +2127,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.04: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.05: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2151,7 +2152,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=404',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=405',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2262,7 +2263,7 @@ let mediaFiles=[];
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.04: opening playlist management is a UI navigation action only.
+    // V4.05: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
@@ -2288,7 +2289,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.04: do NOT pause audio/video merely because the management screen
+      // V4.05: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2305,7 +2306,7 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.04: if playback was active before entering management, keep it
+      // V4.05: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
@@ -2391,6 +2392,11 @@ let mediaFiles=[];
       newItems.push(id);
     }
     if(!newItems.length){ toast2('선택한 곡은 이미 재생목록에 있습니다.'); return; }
+    const hadPlaylist=playlist.length-newItems.length>0;
+    if(!hadPlaylist || !currentTrackId){
+      const firstAdded=playlist.findIndex(t=>t.id===newItems[0]);
+      if(firstAdded>=0){ index=firstAdded; currentTrackId=playlist[firstAdded].id; persistCurrentTrack(); }
+    }
     saveList();
     try{await cacheMediaFiles(selected,false);}catch(err){console.warn('cache selected media',err)}
     mediaFiles = mediaFiles.concat(selected.filter(f=>!mediaFiles.some(x=>fileEquivalent({name:x.name,size:x.size,path:x.webkitRelativePath||x.name},f))));
