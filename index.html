@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.00</title>
+<title>말구씨 음악 앱 · V4.01</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -179,7 +179,7 @@ input[type=file]{display:none}
   justify-content:center;
   cursor:pointer;
 }
-.video-run-btn.show{display:flex}
+.video-run-btn.show{display:none!important}
 .video-run-btn:active{transform:translate(-50%,-50%) scale(.97)}
 
 .video-player{
@@ -399,7 +399,6 @@ html,body{width:100%;overflow:hidden;}
     <img id="mainImage" class="art" src="dog_default.png" alt="말구씨 기본 강아지 이미지">
     <div id="videoFrame" class="video-frame" hidden>
       <video id="mainVideo" class="video-player" playsinline webkit-playsinline preload="auto"></video>
-      <button id="videoRunBtn" class="video-run-btn" type="button" aria-label="영상 실행">▶ 실행</button>
       <button id="btnPiP" class="video-pip-btn" type="button"
         title="작은 화면으로 전환" aria-label="작은 화면으로 전환" aria-hidden="true">↗</button>
       <button id="btnAirPlay" class="video-airplay-btn" type="button"
@@ -449,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.00</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.01</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -605,9 +604,22 @@ function setupMediaSessionHandlers(){
   const safe=(name,fn)=>{
     try{navigator.mediaSession.setActionHandler(name,fn)}catch(e){}
   };
-  safe('play',async()=>{ 
-    const m=activeMedia||audio;
-    try{await m.play();setMediaSessionState('playing');updateUI();}catch(e){}
+  safe('play',async()=>{
+    try{
+      if(!playlist.length)return;
+      const m=activeMedia||audio;
+      if(!m || !m.src){
+        await loadCurrent(true,false,false);
+      }else{
+        await playActiveMedia(false);
+      }
+      await ensureCurrentArtworkForMediaSession();
+      setMediaSessionState(mediaActuallyPlaying?'playing':'paused');
+      updateUI();
+    }catch(e){
+      setMediaSessionState('paused');
+      updateUI();
+    }
   });
   safe('pause',()=>{
     const m=activeMedia||audio;
@@ -630,6 +642,7 @@ function setupMediaSessionHandlers(){
 function refreshMediaSessionForPlayback(){
   setupMediaSessionHandlers();
   updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
+  ensureCurrentArtworkForMediaSession().catch(()=>{});
   setMediaSessionState('playing');
 }
 
@@ -776,7 +789,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.00';
+const APP_VERSION='V4.01';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const ARTWORK_CACHE_KEY='malgussi_artwork_cache_v1';
@@ -801,7 +814,7 @@ let index=0;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.00: serialize/obsolete overlapping transport commands so rapid taps
+// V4.01: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
@@ -1215,6 +1228,38 @@ async function waitForVideoReady(timeoutMs=2500){
   });
 }
 
+
+async function ensureCurrentArtworkForMediaSession(){
+  const t=playlist[index];
+  const f=t ? fileMap.get(t.id) : null;
+  if(!t || !f) return null;
+
+  let art=artworkMap.get(t.id)||getCachedArtwork(t.id);
+  if(!art){
+    try{ art=await extractArtwork(f); }catch(e){ art=null; }
+  }
+  // MP4 fallback: use the first video frame if no embedded cover exists.
+  if(!art && isVideoFile(f)){
+    try{
+      const frame=await videoFirstFrame(f);
+      if(frame){
+        const bin=atob(frame.split(',')[1]||'');
+        const bytes=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+        art={mime:'image/jpeg',bytes};
+      }
+    }catch(e){}
+  }
+  if(art){
+    cacheArtworkForTrack(t.id,art);
+    const u=artworkToUrl(art);
+    if(u) art={...art,blobUrl:u};
+    artworkMap.set(t.id,art);
+    updateMediaSessionMetadata(art);
+  }
+  return art;
+}
+
 async function playActiveMedia(fromUserGesture=false){
   const m=activeMedia||audio;
   mediaActuallyPlaying=false;
@@ -1253,13 +1298,14 @@ async function playActiveMedia(fromUserGesture=false){
       if(rb) rb.classList.remove('show');
     }
     setMediaSessionState('playing');
+    ensureCurrentArtworkForMediaSession().catch(()=>{});
     updateUI();
     return true;
   }catch(e){
     if(m===video){
       video.autoplay=false;
       const rb=$('videoRunBtn');
-      if(rb) rb.classList.add('show');
+      if(rb) rb.classList.remove('show');
       $('status').textContent=fromUserGesture
         ?'동영상을 재생하지 못했습니다. 다시 재생 버튼을 눌러 주세요.'
         :'동영상 자동재생이 제한되었습니다. 재생 버튼을 눌러 주세요.';
@@ -1408,7 +1454,7 @@ async function reconnectSavedFolderForPlayback(){
     const files=await collectDirectoryMedia(h,'');
     if(!files.length)return false;
     await cacheMediaFiles(files,true);
-    await relinkFromFolder(files,true,true);
+    await relinkFromFolder(files,false,true);
     return !!fileMap.get(playlist[index]?.id);
   }catch(e){return false;}
 }
@@ -1427,7 +1473,7 @@ async function ensurePlaybackReady(){
     const cached=await loadCachedMediaFiles();
     if(cached.length){
       mediaFiles=cached;
-      relinkFromFolder(cached,true,true);
+      relinkFromFolder(cached,false,true);
       if(fileMap.has(playlist[index]?.id)) return true;
     }
   }catch(e){}
@@ -1601,6 +1647,7 @@ function renderPlaylist(){
 }
 
 
+// V4.01: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -2014,7 +2061,7 @@ function updateUI(){
     :'아직 음악 또는 동영상이 없습니다';
   updateRepeatButton();
 }
-if($('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
+if(false && $('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
   if(!mediaActuallyPlaying){
     video.muted=false; video.volume=1;
     const ok=await playActiveMedia(true);
@@ -2027,7 +2074,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.00: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.01: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2052,7 +2099,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=400',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=401',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2130,7 +2177,7 @@ let mediaFiles=[];
       const cached=await loadCachedMediaFiles();
       if(cached.length){
         mediaFiles=cached;
-        relinkFromFolder(cached,true);
+        relinkFromFolder(cached,false);
         if(playlist.every(t=>fileMap.has(t.id))) return true;
       }
     }catch(e){}
@@ -2143,7 +2190,7 @@ let mediaFiles=[];
           const fs=await collectDirectoryMedia(h,'');
           if(fs.length){
             await cacheMediaFiles(fs,true);
-            relinkFromFolder(fs,true,true);
+            relinkFromFolder(fs,false,true);
             if(playlist.every(t=>fileMap.has(t.id))) return true;
           }
         }
@@ -2162,7 +2209,7 @@ let mediaFiles=[];
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.00: opening playlist management is a UI navigation action only.
+    // V4.01: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
@@ -2188,7 +2235,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.00: do NOT pause audio/video merely because the management screen
+      // V4.01: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2205,7 +2252,7 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.00: if playback was active before entering management, keep it
+      // V4.01: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
@@ -2774,7 +2821,7 @@ let mediaFiles=[];
       if(cachedFirst.length) await relinkFromFolder(cachedFirst,true,true);
       if(h && p==='granted'){
         const files=await collectDirectoryMedia(h,'');
-        if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,true,true);}
+        if(files.length){await cacheMediaFiles(files,true);await relinkFromFolder(files,false,true);}
       }
       if(playlist.length) await loadCurrent(false,false,true);
       else updateUI();
