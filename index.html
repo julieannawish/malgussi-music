@@ -783,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.07';
+const APP_VERSION='V4.09';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1554,12 +1554,9 @@ async function reconnectSavedFolderForPlayback(){
 
 let appBootReady=Promise.resolve();
 
-async function ensurePlaybackReady(){
-  // V3.97: The first-screen controls must not depend on the user opening
-  // Playlist Management first. The playlist screen was previously calling
-  // ensurePlaylistSources(), which silently initialized fileMap. On a fresh
-  // launch the three main controls could therefore run before boot finished.
-  try{ await appBootReady; }catch(e){}
+async function ensurePlaybackReady(options={}){
+  const waitForBoot=options.waitForBoot!==false;
+  if(waitForBoot){ try{ await appBootReady; }catch(e){} }
   if(!playlist.length) return false;
   if(fileMap.has(playlist[index]?.id)) return true;
   try{
@@ -1578,7 +1575,7 @@ async function stepTo(delta){
   if(!playlist.length)return;
 
   if(!fileMap.has(playlist[index]?.id)){
-    const ready=await ensurePlaybackReady();
+    const ready=await ensurePlaybackReady({waitForBoot:true});
     if(!isCurrentMediaCommand(token))return;
     if(!ready){
       $('status').textContent='재생 파일을 준비하지 못했습니다. 기본 미디어 폴더를 확인해 주세요.';
@@ -1617,12 +1614,11 @@ async function stepTo(delta){
   if(!isCurrentMediaCommand(token))return;
   await loadCurrent(true,true,false);
 }
-$('btnPrev').onclick=async()=>{try{await appBootReady;}catch(e){} await stepTo(-1);};
-$('btnNext').onclick=async()=>{try{await appBootReady;}catch(e){} await stepTo(1);};
+$('btnPrev').onclick=async()=>{await stepTo(-1);};
+$('btnNext').onclick=async()=>{await stepTo(1);};
 
 $('btnPlay').onclick=async()=>{
   const token=beginMediaCommand();
-  try{await appBootReady;}catch(e){}
   if(!playlist.length){ if(window.openV352Playlist) window.openV352Playlist(); return; }
 
   if(currentTrackId){
@@ -1657,7 +1653,7 @@ $('btnPlay').onclick=async()=>{
     }
   }
 
-  const ready=await ensurePlaybackReady();
+  const ready=await ensurePlaybackReady({waitForBoot:false});
   if(!isCurrentMediaCommand(token)) return;
   const f=fileMap.get(playlist[index]?.id);
   if(!ready || !f){
@@ -2444,6 +2440,15 @@ let mediaFiles=[];
     }
     pmsel.clear(); updatePlaylistPickerSelectionUI();
     if(!newItems.length){toast2('선택한 곡은 이미 재생목록에 있습니다.');return;}
+    if(!currentTrackId){
+      const firstAdded=playlist.findIndex(t=>t.id===newItems[0]);
+      if(firstAdded>=0){
+        index=firstAdded;
+        currentTrackId=playlist[firstAdded].id;
+        persistCurrentTrack();
+      }
+    }
+    
     saveList();
     try{await cacheMediaFiles(selected,false);}catch(err){console.warn('cache selected media',err)}
     close('v352PlaylistPicker'); q('v352Playlist').classList.add('open'); q('v352Playlist').setAttribute('aria-hidden','false');
@@ -2465,10 +2470,9 @@ let mediaFiles=[];
     requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
     setTimeout(focusAddedRow,120);
     toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
+    updateUI();
     if(playlist.length && fileMap.has(playlist[index]?.id)){
-      try{ await loadCurrent(false,false,true); }catch(err){ console.warn('prepare picker-added media',err); }
-    }else{
-      updateUI();
+      try{ await prepareCurrentTrackForUI(); }catch(err){ console.warn('prepare picker-added media',err); }
     }
   };
   q('mediaFilesPicker').addEventListener('change',async e=>{
@@ -2515,10 +2519,9 @@ let mediaFiles=[];
     requestAnimationFrame(()=>requestAnimationFrame(focusAddedRow));
     setTimeout(focusAddedRow,120);
     toast2(`✓ ${newItems.length}곡을 재생목록에 추가했습니다.`);
+    updateUI();
     if(playlist.length && fileMap.has(playlist[index]?.id)){
-      try{ await loadCurrent(false,false,true); }catch(err){ console.warn('prepare added media',err); }
-    }else{
-      updateUI();
+      try{ await prepareCurrentTrackForUI(); }catch(err){ console.warn('prepare added media',err); }
     }
   });
   q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
