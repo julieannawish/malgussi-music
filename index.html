@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.06</title>
+<title>말구씨 음악 앱 · V4.07</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.06</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.07</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -783,7 +783,7 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-const APP_VERSION='V4.06';
+const APP_VERSION='V4.07';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -811,7 +811,7 @@ let loadedTrackId=null;
 let repeatAll=localStorage.getItem('repeatAll')==='1';
 let objectUrl=null;
 let dragging=false;
-// V4.06: serialize/obsolete overlapping transport commands so rapid taps
+// V4.07: serialize/obsolete overlapping transport commands so rapid taps
 // cannot leave the three main controls in a stale state.
 let mediaCommandToken=0;
 let mediaLoadToken=0;
@@ -1629,7 +1629,13 @@ $('btnPlay').onclick=async()=>{
     const resolved=playlist.findIndex(t=>t.id===currentTrackId);
     if(resolved>=0) index=resolved;
   }
-  const current=fileMap.get(playlist[index]?.id);
+  let current=fileMap.get(playlist[index]?.id);
+  if(!current){
+    try{
+      await prepareCurrentTrackForUI();
+      current=fileMap.get(playlist[index]?.id);
+    }catch(e){}
+  }
   if(current){
     const m=activeMedia||audio;
     // Critical path: if the current media is already attached, invoke play/pause
@@ -1756,7 +1762,7 @@ function renderPlaylist(){
 }
 
 
-// V4.06: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
+// V4.07: automatic boot/reconnect never deletes playlist records; only explicit folder scans may clean them.
 // V3.54: ONLY an explicit folder scan may remove missing playlist index records.
 // V3.54_SCAN_ONLY_CLEANUP: 실제 폴더 스캔 후에만 없는 인덱스를 삭제합니다.
 function relinkFromFolder(files, cleanupMissing=true, fastBoot=false){
@@ -2151,6 +2157,32 @@ function showDefaultScreen(){
   $('seekBar').value=0;
 }
 
+
+async function prepareCurrentTrackForUI(){
+  if(!playlist.length)return false;
+  if(currentTrackId){
+    const resolved=playlist.findIndex(t=>t.id===currentTrackId);
+    if(resolved>=0)index=resolved;
+  }
+  const t=playlist[index];
+  if(!t)return false;
+  const f=fileMap.get(t.id);
+  if(!f){
+    updateUI();
+    return false;
+  }
+  currentTrackId=t.id;
+  persistCurrentTrack();
+  try{
+    await loadCurrent(false,false,true);
+  }catch(e){
+    console.warn('prepareCurrentTrackForUI',e);
+  }
+  updateUI();
+  renderMedia();
+  return !!fileMap.get(t.id);
+}
+
 function updateUI(){
   if(playlist.length && currentTrackId){
     const resolved=playlist.findIndex(t=>t.id===currentTrackId);
@@ -2183,7 +2215,7 @@ if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
 setupMediaSessionHandlers();
-// V4.06: visibility/navigation must not call pause(). Native iOS may suspend
+// V4.07: visibility/navigation must not call pause(). Native iOS may suspend
 // video when backgrounded, but MP3 is allowed to continue and Media Session
 // state is preserved.
 document.addEventListener('visibilitychange',()=>{
@@ -2208,7 +2240,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=406',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=407',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2319,7 +2351,7 @@ let mediaFiles=[];
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
-    // V4.06: opening playlist management is a UI navigation action only.
+    // V4.07: opening playlist management is a UI navigation action only.
     // It must never stop the currently playing media.
     if(id==='v352Playlist'){
       playlistWasPlaying=!!(mediaActuallyPlaying && activeMedia && !activeMedia.paused);
@@ -2345,7 +2377,7 @@ let mediaFiles=[];
       updatePlaylistPickerSelectionUI();
     }
     if(id==='v352Playlist'){
-      // V4.06: do NOT pause audio/video merely because the management screen
+      // V4.07: do NOT pause audio/video merely because the management screen
       // is opened. Playback continues underneath the management UI.
       psel.clear();
       await ensurePlaylistSources();
@@ -2362,7 +2394,7 @@ let mediaFiles=[];
       return;
     }
     if(id==='v352Playlist'){
-      // V4.06: if playback was active before entering management, keep it
+      // V4.07: if playback was active before entering management, keep it
       // active. If the user changed the current track while inside the list,
       // start that explicitly selected track; otherwise do not start a paused
       // item merely because the screen is being closed.
