@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.20</title>
+<title>말구씨 음악 앱 · V4.21</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.20</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.21</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -482,6 +482,7 @@ html,body{width:100%;overflow:hidden;}
   <div class="v352-inner">
     <div class="v352-head"><div class="v352-title">☰♫ 재생목록 관리</div><button class="v352-close" data-v352-close="v352Playlist">×</button></div>
     <section class="v352-section"><div class="v352-section-title">재생 방식</div><div class="v352-mode"><button data-v352-mode="order">연속재생</button><button data-v352-mode="random">랜덤재생</button><button data-v352-mode="one">한 곡 반복</button></div></section>
+    <div id="v352DurableSummary" style="font-size:13px;font-weight:800;line-height:1.5;margin:2px 2px 8px;min-height:18px;"></div>
     <div id="v352PlaylistList"></div>
     <div class="v352-pl-footer"><span id="v352SelectedCount">선택 0개</span><div class="pl-actions"><button id="v352OpenMedia" class="pl-icon-btn add" aria-label="추가"><span>＋</span><small>추가</small></button><button id="v352Delete" class="pl-icon-btn delete" disabled aria-label="삭제"><span>🗑</span><small>삭제</small></button><button id="v352Deduplicate" class="pl-icon-btn duplicate" disabled aria-label="중복 삭제"><span>⧉</span><small>중복 삭제</small></button></div></div>
     <div class="v352-note">● 여러 곡을 손가락으로 연속 선택할 수 있습니다.<br>≡ 선택한 곡은 드래그하여 묶음으로 순서를 바꿀 수 있습니다.<br>원본 파일은 삭제하지 않습니다.</div>
@@ -845,59 +846,22 @@ async function loadTrackFileFromCacheAPI(trackId){
     return f;
   }catch(e){return null;}
 }
-// V4.19: 25MB and up counts as "large". Large media is stored in ONE durable
-// place, not two, to avoid doubling storage pressure (see the fallback note below).
+// 25MB and up counts as "large".
 const TRACK_CACHE_LARGE_BYTES=25*1024*1024;
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
   const isLarge=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES;
-  // V4.20: copy the real bytes ONCE, then persist the same durable Blob to both
-  // stores. This is what actually survives an iOS PWA restart (see materializeMediaBlob).
   const meta={name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name};
-  const durable=await materializeMediaBlob(f);
   let idbOk=false, apiOk=false;
-  try{
-    const db=await openTrackCacheDB();
-    await new Promise((resolve,reject)=>{
-      const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
-      tx.objectStore(TRACK_CACHE_STORE).put({
-        blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,
-        type:meta.type,path:meta.path,trackId
-      },trackId);
-      tx.oncomplete=()=>{idbOk=true;resolve();};
-      tx.onerror=()=>reject(tx.error);
-      tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
-    });
-  }catch(e){console.warn('G1 saveTrackFile idb',e);}
 
-  // G1: do not report a persistent save until IndexedDB can actually return a
-  // non-empty media File back.
-  if(idbOk){
-    try{
-      const check=await (async()=>{
-        const db=await openTrackCacheDB();
-        return await new Promise((resolve,reject)=>{
-          const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
-          req.onsuccess=()=>resolve(req.result?.blob||null);
-          req.onerror=()=>reject(req.error);
-        });
-      })();
-      idbOk=!!(check && Number(check.size||0)>0);
-    }catch(e){idbOk=false;}
-  }
-
-  // V4.19: Cache Storage is a FALLBACK, not an unconditional second full copy.
-  // The old code wrote every file to BOTH IndexedDB and Cache Storage, so a large
-  // documentary MP4 consumed twice the storage and iPhone PWAs hit their quota at
-  // half the real capacity — leaving later files as '원본 없음' after relaunch.
-  // Large files that persisted durably in IndexedDB now skip the redundant copy
-  // (and drop any stale one). Small files keep the redundant copy for resilience.
-  if(idbOk && isLarge){
-    try{ if('caches' in window){const c=await caches.open(TRACK_CACHE_API); await c.delete(trackCacheRequest(trackId));} }catch(e){}
-    return true;
-  }
-
-  try{ apiOk=await saveTrackFileToCacheAPI(trackId,durable,meta); }
+  // V4.20 durable store #1 — Cache Storage, written FIRST and for every file.
+  // Cache Storage streams the File body straight to disk without loading it fully
+  // into memory, so even a large documentary MP4 (a) does not blow the iOS PWA
+  // memory limit and (b) is stored as real bytes that survive an app restart.
+  // This is the fix for the earlier report where MP3 AND MP4 both reverted to
+  // '원본 없음' after relaunch: WebKit had persisted the picked File as a temporary
+  // reference that died when the app closed. We pass the original File so it streams.
+  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f,meta); }
   catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
   if(apiOk){
     try{
@@ -905,7 +869,44 @@ async function saveTrackFile(trackId,f){
       apiOk=!!(check && isMediaFile(check) && Number(check.size||0)>0);
     }catch(e){apiOk=false;}
   }
-  return idbOk||apiOk;
+
+  // Durable store #2 — IndexedDB with materialized (in-memory) bytes, as a
+  // redundant copy for SMALL files only. Large files skip this: reading a big MP4
+  // into an ArrayBuffer can crash an iOS PWA, and a raw File stored in IndexedDB
+  // is the very reference that does not survive restart. Cache Storage above is
+  // the durable store for large files.
+  if(!isLarge){
+    let durable=f;
+    try{ durable=await materializeMediaBlob(f); }catch(e){ durable=f; }
+    try{
+      const db=await openTrackCacheDB();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+        tx.objectStore(TRACK_CACHE_STORE).put({
+          blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,
+          type:meta.type,path:meta.path,trackId
+        },trackId);
+        tx.oncomplete=()=>{idbOk=true;resolve();};
+        tx.onerror=()=>reject(tx.error);
+        tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
+      });
+    }catch(e){console.warn('G1 saveTrackFile idb',e);}
+    if(idbOk){
+      try{
+        const check=await (async()=>{
+          const db=await openTrackCacheDB();
+          return await new Promise((resolve,reject)=>{
+            const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
+            req.onsuccess=()=>resolve(req.result?.blob||null);
+            req.onerror=()=>reject(req.error);
+          });
+        })();
+        idbOk=!!(check && Number(check.size||0)>0);
+      }catch(e){idbOk=false;}
+    }
+  }
+
+  return apiOk||idbOk;
 }
 async function loadTrackFile(trackId){
   if(!trackId)return null;
@@ -982,7 +983,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.20';
+const APP_VERSION='V4.21';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1202,13 +1203,55 @@ async function restorePlaylistIfMissing(){
   return true;
 }
 
+// V4.20: lightweight "is this track durably stored?" probe. Checks Cache Storage
+// by header (no body read) then IndexedDB, so it stays cheap even for large MP4s.
+async function trackHasDurableCopy(trackId){
+  if(!trackId) return false;
+  try{
+    if('caches' in window){
+      const c=await caches.open(TRACK_CACHE_API);
+      const res=await c.match(trackCacheRequest(trackId));
+      if(res && Number(res.headers.get('X-Malgussi-Size')||0)>0) return true;
+    }
+  }catch(e){}
+  try{
+    const db=await openTrackCacheDB();
+    const sz=await new Promise((resolve)=>{
+      const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
+      req.onsuccess=()=>resolve(Number(req.result?.blob?.size||0));
+      req.onerror=()=>resolve(0);
+    });
+    if(sz>0) return true;
+  }catch(e){}
+  return false;
+}
 function renderStorageInfo(){
   const indexBytes=new Blob([JSON.stringify(playlist)]).size;
   const connected=playlist.filter(t=>fileMap.has(t.id)).length;
-  $('storageInfo').innerHTML =
+  const el=$('storageInfo');
+  if(!el) return;
+  el.innerHTML =
     `인덱스 ${playlist.length}곡 · 앱에 저장된 음악 파일 <b>0 MB</b><br>`+
     `현재 연결됨 ${connected}곡 · 인덱스 정보 약 ${formatBytes(indexBytes)}<br>`+
     `<span class="relink-note">※ 음악·MP4 원본 파일은 앱 저장소로 복사하지 않습니다.</span>`;
+}
+// V4.20: durability summary shown in the (visible) playlist-management screen so
+// the user can confirm on-device whether adds are actually stored. Distinguishes
+// "save failed" (0 right after adding) from "iOS evicted after restart"
+// (N after adding, fewer after relaunch).
+let durableSummaryToken=0;
+async function renderPlaylistDurableSummary(){
+  const el=document.getElementById('v352DurableSummary');
+  if(!el) return;
+  if(!playlist.length){ el.textContent=''; return; }
+  const my=++durableSummaryToken;
+  el.textContent='앱 저장 상태 확인 중…';
+  let n=0;
+  for(const t of playlist){ if(await trackHasDurableCopy(t.id)) n++; }
+  if(my!==durableSummaryToken) return;
+  const all=n===playlist.length;
+  el.textContent=`앱에 저장됨(재실행 복원 가능): ${n} / ${playlist.length}곡`+(all?' ✓':' — 이 숫자가 곡 수와 같아야 재실행 후 복원됩니다');
+  el.style.color=all?'#2E7D32':'#B00020';
 }
 
 function isAudioFile(f){
@@ -2509,7 +2552,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=420',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=421',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -3161,6 +3204,7 @@ function renderPL(){
       box.append(row);
     });
     updatePF();
+    renderPlaylistDurableSummary();
   }
   function refreshSelectionVisuals(){
     document.querySelectorAll('#v352PlaylistList .v352-pl-row').forEach(row=>{
