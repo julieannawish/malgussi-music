@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.22</title>
+<title>말구씨 음악 앱 · V4.23</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.22</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.23</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -760,8 +760,11 @@ async function cacheMediaFiles(files,replaceAll=true){
     let ok=0;
     for(const f of arr){
       try{
-        // V4.20: store real bytes, not a File reference that dies on iOS restart.
-        const durable=await materializeMediaBlob(f);
+        // V4.20/23: store real bytes for small files so this filename-keyed cache also
+        // survives an iOS restart. Large files are NOT materialized here (that would
+        // read the whole MP4 into memory); their durable copy is the chunked per-track
+        // cache. This cache keeps only a lightweight reference for large files.
+        const durable=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES ? f : await materializeMediaBlob(f);
         await new Promise((resolve,reject)=>{
           const tx=db.transaction(MEDIA_CACHE_STORE,'readwrite');
           const key=[String(f.name||''),Number(f.size||0),Number(f.lastModified||0),f.webkitRelativePath||f.name||''].join('|');
@@ -848,84 +851,118 @@ async function loadTrackFileFromCacheAPI(trackId){
 }
 // 25MB and up counts as "large".
 const TRACK_CACHE_LARGE_BYTES=25*1024*1024;
+// V4.23: chunk size for large-file storage. Only ~6MB is ever held in memory at a
+// time, so a big MP4 can be persisted on an iPhone without blowing the PWA memory
+// limit, while the bytes still land as REAL data in IndexedDB (the only store that
+// proved durable across an iOS restart — Cache Storage kept only a dead reference).
+const TRACK_CACHE_CHUNK_BYTES=6*1024*1024;
+function idbPromise(req){ return new Promise((resolve,reject)=>{ req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error); }); }
+function txDone(tx){ return new Promise((resolve,reject)=>{ tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted')); }); }
+// Remove any prior record for this track id — single-blob and/or chunk records.
+async function deleteTrackRecordsIDB(db,trackId){
+  try{
+    const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+    const s=tx.objectStore(TRACK_CACHE_STORE);
+    s.delete(trackId);
+    try{ s.delete(IDBKeyRange.bound(trackId+'::c::',trackId+'::c::￿')); }catch(e){}
+    await txDone(tx);
+  }catch(e){}
+}
+// Store a large file as N chunk records + one manifest record (written last, so a
+// half-written file is never seen as complete).
+async function saveTrackChunksToIDB(trackId,f,meta){
+  const db=await openTrackCacheDB();
+  await deleteTrackRecordsIDB(db,trackId);
+  const total=Math.max(1,Math.ceil(Number(f.size||0)/TRACK_CACHE_CHUNK_BYTES));
+  for(let i=0;i<total;i++){
+    const slice=f.slice(i*TRACK_CACHE_CHUNK_BYTES, Math.min((i+1)*TRACK_CACHE_CHUNK_BYTES, f.size));
+    const buf=await slice.arrayBuffer();
+    const chunkBlob=new Blob([buf],{type:f.type||'application/octet-stream'});
+    const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+    tx.objectStore(TRACK_CACHE_STORE).put({chunk:chunkBlob,i,trackId},trackId+'::c::'+i);
+    await txDone(tx);
+  }
+  const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+  tx.objectStore(TRACK_CACHE_STORE).put({chunked:true,chunks:total,name:meta.name,size:meta.size,lastModified:meta.lastModified,type:meta.type,path:meta.path,trackId},trackId);
+  await txDone(tx);
+  return total;
+}
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
   const isLarge=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES;
   const meta={name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name};
-  let idbOk=false, apiOk=false;
 
-  // V4.20 durable store #1 — Cache Storage, written FIRST and for every file.
-  // Cache Storage streams the File body straight to disk without loading it fully
-  // into memory, so even a large documentary MP4 (a) does not blow the iOS PWA
-  // memory limit and (b) is stored as real bytes that survive an app restart.
-  // This is the fix for the earlier report where MP3 AND MP4 both reverted to
-  // '원본 없음' after relaunch: WebKit had persisted the picked File as a temporary
-  // reference that died when the app closed. We pass the original File so it streams.
-  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f,meta); }
+  // LARGE media: store real bytes in IndexedDB, chunked (memory-safe + durable).
+  // Confirmed on-device: a small MP3 materialized into IndexedDB survives a restart,
+  // while a large MP4 handed to Cache Storage as a File does not. So large files now
+  // use the same durable mechanism, just split so the whole file never sits in RAM.
+  if(isLarge){
+    let idbOk=false;
+    try{ await saveTrackChunksToIDB(trackId,f,meta); idbOk=true; }
+    catch(e){ console.warn('G1 saveTrackFile chunks',e); }
+    if(idbOk){
+      try{ const chk=await loadTrackFile(trackId); idbOk=!!(chk && isMediaFile(chk) && Number(chk.size||0)>0); }
+      catch(e){ idbOk=false; }
+    }
+    return idbOk;
+  }
+
+  // SMALL media: materialize whole bytes → IndexedDB (durable) + Cache Storage (redundant).
+  let idbOk=false, apiOk=false;
+  let durable=f;
+  try{ durable=await materializeMediaBlob(f); }catch(e){ durable=f; }
+  try{
+    const db=await openTrackCacheDB();
+    await deleteTrackRecordsIDB(db,trackId);
+    const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
+    tx.objectStore(TRACK_CACHE_STORE).put({blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,type:meta.type,path:meta.path,trackId},trackId);
+    await txDone(tx);
+    idbOk=true;
+  }catch(e){console.warn('G1 saveTrackFile idb',e);}
+  if(idbOk){
+    try{ const chk=await loadTrackFile(trackId); idbOk=!!(chk && isMediaFile(chk) && Number(chk.size||0)>0); }
+    catch(e){ idbOk=false; }
+  }
+  try{ apiOk=await saveTrackFileToCacheAPI(trackId,durable,meta); }
   catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
   if(apiOk){
-    try{
-      const check=await loadTrackFileFromCacheAPI(trackId);
-      apiOk=!!(check && isMediaFile(check) && Number(check.size||0)>0);
-    }catch(e){apiOk=false;}
+    try{ const check=await loadTrackFileFromCacheAPI(trackId); apiOk=!!(check && isMediaFile(check) && Number(check.size||0)>0); }
+    catch(e){apiOk=false;}
   }
-
-  // Durable store #2 — IndexedDB with materialized (in-memory) bytes, as a
-  // redundant copy for SMALL files only. Large files skip this: reading a big MP4
-  // into an ArrayBuffer can crash an iOS PWA, and a raw File stored in IndexedDB
-  // is the very reference that does not survive restart. Cache Storage above is
-  // the durable store for large files.
-  if(!isLarge){
-    let durable=f;
-    try{ durable=await materializeMediaBlob(f); }catch(e){ durable=f; }
-    try{
-      const db=await openTrackCacheDB();
-      await new Promise((resolve,reject)=>{
-        const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
-        tx.objectStore(TRACK_CACHE_STORE).put({
-          blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,
-          type:meta.type,path:meta.path,trackId
-        },trackId);
-        tx.oncomplete=()=>{idbOk=true;resolve();};
-        tx.onerror=()=>reject(tx.error);
-        tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
-      });
-    }catch(e){console.warn('G1 saveTrackFile idb',e);}
-    if(idbOk){
-      try{
-        const check=await (async()=>{
-          const db=await openTrackCacheDB();
-          return await new Promise((resolve,reject)=>{
-            const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
-            req.onsuccess=()=>resolve(req.result?.blob||null);
-            req.onerror=()=>reject(req.error);
-          });
-        })();
-        idbOk=!!(check && Number(check.size||0)>0);
-      }catch(e){idbOk=false;}
-    }
-  }
-
-  return apiOk||idbOk;
+  return idbOk||apiOk;
 }
 async function loadTrackFile(trackId){
   if(!trackId)return null;
   try{
     const db=await openTrackCacheDB();
-    const f=await new Promise((resolve,reject)=>{
-      const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
-      req.onsuccess=()=>{
-        const x=req.result;
-        if(!x||!x.blob){resolve(null);return;}
+    const rec=await idbPromise(db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId));
+    if(rec){
+      if(rec.chunked){
+        // V4.23: reassemble the chunk records into one Blob. The chunks come back
+        // as disk-backed Blobs, so the composite stays lazy and playback streams.
+        const parts=[];
+        let ok=rec.chunks>0;
+        for(let i=0;i<rec.chunks;i++){
+          const cr=await idbPromise(db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId+'::c::'+i));
+          if(!cr || !cr.chunk || Number(cr.chunk.size||0)<=0){ ok=false; break; }
+          parts.push(cr.chunk);
+        }
+        if(ok){
+          try{
+            const blob=new Blob(parts,{type:rec.type||'application/octet-stream'});
+            const f=new File([blob],rec.name,{type:rec.type||'',lastModified:Number(rec.lastModified)||Date.now()});
+            try{Object.defineProperty(f,'webkitRelativePath',{value:rec.path||rec.name,configurable:true});}catch(e){}
+            if(isMediaFile(f) && Number(f.size||0)>0)return f;
+          }catch(e){}
+        }
+      }else if(rec.blob){
         try{
-          const f=new File([x.blob],x.name,{type:x.type||'',lastModified:Number(x.lastModified)||Date.now()});
-          try{Object.defineProperty(f,'webkitRelativePath',{value:x.path||x.name,configurable:true});}catch(e){}
-          resolve(f);
-        }catch(e){resolve(null)}
-      };
-      req.onerror=()=>reject(req.error);
-    });
-    if(f && isMediaFile(f) && Number(f.size||0)>0)return f;
+          const f=new File([rec.blob],rec.name,{type:rec.type||'',lastModified:Number(rec.lastModified)||Date.now()});
+          try{Object.defineProperty(f,'webkitRelativePath',{value:rec.path||rec.name,configurable:true});}catch(e){}
+          if(isMediaFile(f) && Number(f.size||0)>0)return f;
+        }catch(e){}
+      }
+    }
   }catch(e){}
   return await loadTrackFileFromCacheAPI(trackId);
 }
@@ -960,11 +997,7 @@ async function deleteTrackFile(trackId){
   try{ if('caches' in window){const c=await caches.open(TRACK_CACHE_API); await c.delete(trackCacheRequest(trackId));} }catch(e){}
   try{
     const db=await openTrackCacheDB();
-    await new Promise((resolve,reject)=>{
-      const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
-      tx.objectStore(TRACK_CACHE_STORE).delete(trackId);
-      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
-    });
+    await deleteTrackRecordsIDB(db,trackId); // removes single-blob AND chunk records
   }catch(e){}
 }
 async function canUseSavedMusicDirectory(){
@@ -983,7 +1016,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.22';
+const APP_VERSION='V4.23';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1210,21 +1243,31 @@ async function restorePlaylistIfMissing(){
 // reflects exactly what restoreTrackFileMap can actually reload.
 async function trackHasDurableCopy(trackId){
   if(!trackId) return false;
+  // IndexedDB first: single materialized blob, or a chunk manifest whose first and
+  // last chunk records are present with real bytes (cheap metadata checks).
+  try{
+    const db=await openTrackCacheDB();
+    const rec=await new Promise((resolve)=>{
+      const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
+      req.onsuccess=()=>resolve(req.result||null); req.onerror=()=>resolve(null);
+    });
+    if(rec){
+      if(rec.chunked && rec.chunks>0){
+        const chunkSize=async i=>await new Promise((resolve)=>{
+          const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId+'::c::'+i);
+          req.onsuccess=()=>resolve(Number(req.result?.chunk?.size||0)); req.onerror=()=>resolve(0);
+        });
+        if((await chunkSize(0))>0 && (await chunkSize(rec.chunks-1))>0) return true;
+      }else if(Number(rec.blob?.size||0)>0){ return true; }
+    }
+  }catch(e){}
+  // Cache Storage fallback (small files): verify the actual body size.
   try{
     if('caches' in window){
       const c=await caches.open(TRACK_CACHE_API);
       const res=await c.match(trackCacheRequest(trackId));
       if(res){ const b=await res.blob(); if(b && Number(b.size||0)>0) return true; }
     }
-  }catch(e){}
-  try{
-    const db=await openTrackCacheDB();
-    const sz=await new Promise((resolve)=>{
-      const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
-      req.onsuccess=()=>resolve(Number(req.result?.blob?.size||0));
-      req.onerror=()=>resolve(0);
-    });
-    if(sz>0) return true;
   }catch(e){}
   return false;
 }
@@ -2555,7 +2598,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=422',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=423',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
