@@ -5,7 +5,7 @@
   "description": "내 음악과 영상을 편하게 듣는 작은 음악상자",
   "lang": "ko",
   "dir": "ltr",
-  "start_url": "./?v=431",
+  "start_url": "./?v=432",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
