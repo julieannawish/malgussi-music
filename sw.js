@@ -1,5 +1,5 @@
-const CACHE='malgussi-v430';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./dog_default.png','./profile_default.png','./app-icon.png','./app-icon-192.png'];
+const CACHE='malgussi-v431';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./dog_default.png','./profile_default.png','./app-icon.png','./app-icon-192.png','./app-icon-maskable.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 // V4.26: only purge OLD APP-SHELL caches (malgussi-vNNN). NEVER delete the track
 // file cache (malgussi-track-cache-*) — that holds the user's saved MP3/MP4 bytes.

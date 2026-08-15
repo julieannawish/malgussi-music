@@ -1,20 +1,35 @@
 {
+  "id": "malgussi-music",
   "name": "말구씨 음악 앱",
   "short_name": "말구씨 음악",
-  "start_url": "./?v=430",
+  "description": "내 음악과 영상을 편하게 듣는 작은 음악상자",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./?v=431",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
+  "categories": ["music", "entertainment"],
   "background_color": "#FFFCF8",
   "theme_color": "#FFFCF8",
   "icons": [
     {
       "src": "app-icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "app-icon.png",
       "sizes": "1254x1254",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "app-icon-maskable.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

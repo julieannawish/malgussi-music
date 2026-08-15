@@ -5,10 +5,15 @@
 <meta name="malgussi-build" content="MALGUSSI_BUILD_V396">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FFFCF8">
+<!-- V4.31: standalone (full-screen) hints for Android and iOS home-screen apps. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="말구씨 음악">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.30</title>
+<title>말구씨 음악 앱 · V4.31</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +453,12 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.30</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.31</span></div>
+    </section>
+    <section class="v352-section" id="v352InstallSection" hidden>
+      <div class="v352-section-title">📲 홈 화면에 설치</div>
+      <button id="v352InstallBtn" class="v352-btn">📲 홈 화면에 설치</button>
+      <div class="v352-note">앱을 홈 화면에 설치하면 전체 화면으로 더 편하게 사용할 수 있습니다.</div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1085,7 +1095,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.30';
+const APP_VERSION='V4.31';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -2746,13 +2756,51 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=430',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=431',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
       });
     })
     .catch(function(){});
+})();
+</script>
+
+<script>
+/* V4.31: Android/desktop Chrome install prompt. iOS Safari does not fire
+   beforeinstallprompt, so the button simply stays hidden there (iOS installs via
+   the Share menu). This never affects the iPhone experience. */
+(function(){
+  var deferred=null;
+  function section(){return document.getElementById('v352InstallSection');}
+  function btn(){return document.getElementById('v352InstallBtn');}
+  function isStandalone(){
+    return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone===true;
+  }
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault();
+    deferred=e;
+    if(isStandalone())return;        // already installed
+    var s=section(); if(s) s.hidden=false;
+  });
+  window.addEventListener('appinstalled',function(){
+    deferred=null;
+    var s=section(); if(s) s.hidden=true;
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    var b=btn(); if(!b) return;
+    b.addEventListener('click',async function(){
+      if(!deferred){
+        var s=section(); if(s) s.hidden=true;
+        return;
+      }
+      deferred.prompt();
+      try{ await deferred.userChoice; }catch(e){}
+      deferred=null;
+      var s=section(); if(s) s.hidden=true;
+    });
+  });
 })();
 </script>
 
