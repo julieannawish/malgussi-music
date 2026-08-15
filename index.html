@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.27</title>
+<title>말구씨 음악 앱 · V4.28</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.27</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.28</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -887,10 +887,40 @@ async function saveTrackChunksToIDB(trackId,f,meta){
   await txDone(tx);
   return total;
 }
+// V4.28: size of the durably stored copy for a track id (0 if none). Used to skip
+// needless re-saves.
+async function storedTrackSize(trackId){
+  if(!trackId) return 0;
+  try{
+    const db=await openTrackCacheDB();
+    const rec=await idbPromise(db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId));
+    if(rec){
+      if(rec.chunked && rec.chunks>0) return Number(rec.size||0);
+      if(rec.blob) return Number(rec.blob.size||0);
+    }
+  }catch(e){}
+  try{
+    if('caches' in window){
+      const c=await caches.open(TRACK_CACHE_API);
+      const res=await c.match(trackCacheRequest(trackId));
+      if(res){ const b=await res.blob(); return Number(b?.size||0); }
+    }
+  }catch(e){}
+  return 0;
+}
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
   const isLarge=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES;
   const meta={name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name};
+
+  // V4.28: if an identical (same-size) durable copy already exists, do not rewrite.
+  // loadCurrent re-saves the current track on every load; the old code re-chunked a
+  // large MP4 each time and briefly deleted its record mid-write, so a concurrent
+  // durability check could read the track as missing (summary flickered to N-1).
+  try{
+    const sz=await storedTrackSize(trackId);
+    if(sz>0 && sz===Number(f.size||0) && await trackHasDurableCopy(trackId)) return true;
+  }catch(e){}
 
   // LARGE media: store real bytes in IndexedDB, chunked (memory-safe + durable).
   // Confirmed on-device: a small MP3 materialized into IndexedDB survives a restart,
@@ -913,9 +943,12 @@ async function saveTrackFile(trackId,f){
   try{ durable=await materializeMediaBlob(f); }catch(e){ durable=f; }
   try{
     const db=await openTrackCacheDB();
-    await deleteTrackRecordsIDB(db,trackId);
+    // Clear any stale chunk records AND overwrite the main record in ONE transaction,
+    // so the record never momentarily disappears for a concurrent reader.
     const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
-    tx.objectStore(TRACK_CACHE_STORE).put({blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,type:meta.type,path:meta.path,trackId},trackId);
+    const s=tx.objectStore(TRACK_CACHE_STORE);
+    try{ s.delete(IDBKeyRange.bound(trackId+'::c::',trackId+'::c::￿')); }catch(e){}
+    s.put({blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,type:meta.type,path:meta.path,trackId},trackId);
     await txDone(tx);
     idbOk=true;
   }catch(e){console.warn('G1 saveTrackFile idb',e);}
@@ -1045,7 +1078,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.27';
+const APP_VERSION='V4.28';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1819,6 +1852,26 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
     // so use the embedded/cached cover if we have one, otherwise the default
     // image — this is the MP4's cover on the main screen before playback starts.
     try{ video.poster = currentArtwork ? artworkToUrl(currentArtwork) : 'dog_default.png'; }catch(e){}
+  }
+
+  // V4.28: if no artwork was ready (fast prev/next navigation skips extraction),
+  // parse the embedded cover in the background and fill it in when done — so an
+  // MP3 with album art shows its cover even when reached via the 이전/다음 buttons.
+  // Guarded by the load token so a slow extraction never overwrites a newer track.
+  if(!currentArtwork){
+    const bgToken=loadToken, bgTrack=t, bgFile=f;
+    (async()=>{
+      let art=null;
+      try{ art=await extractArtwork(bgFile); }catch(e){}
+      if(!art || bgToken!==mediaLoadToken || playlist[index]?.id!==bgTrack.id) return;
+      cacheArtworkForTrack(bgTrack.id,art); artworkMap.set(bgTrack.id,art);
+      try{
+        const url=artworkToUrl(art);
+        if(isVideoFile(bgFile)){ video.poster=url; }
+        else { $('mainImage').src=url; $('mainImage').alt='앨범 커버'; $('mainImage').hidden=false; $('mainImage').dataset.url=url; }
+        updateMediaSessionMetadata(art);
+      }catch(e){}
+    })();
   }
 
   // Media Session에는 embedded artwork를 Blob URL로 전달한다.
@@ -2659,7 +2712,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=427',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=428',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
