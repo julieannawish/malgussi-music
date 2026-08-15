@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.18</title>
+<title>말구씨 음악 앱 · V4.19</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.18</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.19</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1444,11 +1444,6 @@ async function relinkPlaylistFromFiles(files){
   if(linked){saveList();renderPlaylist();renderStorageInfo();updateUI();}
   return linked;
 }
-function addFiles(files){
-  const result=reconnectSelectedFiles(files);
-  $('status').textContent=result.reconnected ? '기존 원본을 재연결했습니다.' : (result.added ? '파일을 추가했습니다.' : '변경된 파일이 없습니다.');
-}
-
 $('files').addEventListener('change',async e=>{
   // 재생목록 관리에서 선택한 파일은 먼저 앱 안의 목록으로 가져온다.
   // 사용자가 원형 선택 버튼으로 원하는 파일만 고른 뒤 '선택한 파일을
@@ -1457,9 +1452,6 @@ $('files').addEventListener('change',async e=>{
   if(selected.length){
     mediaFiles=selected;
     msel.clear();
-    if(false && document.getElementById('v352Media')?.classList.contains('open')){
-      renderMedia();
-    }
     $('status').textContent=`${selected.length}개 파일을 불러왔습니다. 추가할 파일을 선택하세요.`;
   }
   e.target.value='';
@@ -2254,23 +2246,9 @@ startProgressSync();
   [video,'loadedmetadata'],[video,'durationchange'],[video,'loadeddata'],
   [video,'canplay'],[video,'timeupdate'],[video,'playing'],[video,'progress']
 ].forEach(([el,ev])=>el.addEventListener(ev,syncMediaUI));
-audio.addEventListener('play',updateUI);
-audio.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
-audio.addEventListener('pause',()=>{mediaActuallyPlaying=false;updateUI()});
-video.addEventListener('play',()=>{
-  video.controls=false; video.removeAttribute('controls');
-  activeMedia=video;
-  setMediaSessionState('playing');
-  updateUI();
-});
+// V4.19: transport state listeners (play/pause/playing/ended) are consolidated
+// into a single block below to remove the previously duplicated registrations.
 video.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
-video.addEventListener('pause',()=>{
-  activeMedia=video;
-  mediaActuallyPlaying=false;
-  setMediaSessionState('paused');
-  updateUI();
-});
-video.addEventListener('ended',()=>{setMediaSessionState('paused');updateUI();});
 function fitVideoFrameNoCrop(){
   const frame=$('videoFrame'), stage=$('mediaStage');
   if(!frame || !stage || video.hidden || !video.videoWidth || !video.videoHeight) return;
@@ -2342,14 +2320,22 @@ async function advanceAfterEnd(){
   persistCurrentTrack();
   await loadCurrent(true);
 }
-audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();});
+// V4.19: single consolidated set of transport-state listeners. Each callback
+// carries the union of side effects that were previously split across two
+// duplicate registration blocks (media-session state, PiP button, run-button
+// visibility, activeMedia tracking, and auto-advance on end).
+audio.addEventListener('play',()=>{refreshMediaSessionForPlayback();updatePiPButton();updateUI();});
 audio.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI();});
 audio.addEventListener('pause',()=>{mediaActuallyPlaying=false;setMediaSessionState('paused');updateUI();});
 video.addEventListener('play',()=>{
+  video.controls=false; video.removeAttribute('controls');
+  activeMedia=video;
   const rb=$('videoRunBtn'); if(rb) rb.classList.remove('show');
-  refreshMediaSessionForPlayback(); updatePiPButton(); updateUI();
+  refreshMediaSessionForPlayback(); updatePiPButton();
+  setMediaSessionState('playing'); updateUI();
 });
 video.addEventListener('pause',()=>{
+  activeMedia=video;
   mediaActuallyPlaying=false;
   const rb=$('videoRunBtn'); if(rb) rb.classList.add('show');
   setMediaSessionState('paused'); updateUI();
@@ -2442,15 +2428,6 @@ function updateUI(){
   updateRepeatButton();
   syncMediaUI();
 }
-if(false && $('videoRunBtn'))$('videoRunBtn').onclick=async()=>{
-  if(!mediaActuallyPlaying){
-    video.muted=false; video.volume=1;
-    const ok=await playActiveMedia(true);
-    if(ok) updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
-  }else{
-    video.pause(); setMediaSessionState('paused'); updateUI();
-  }
-};
 if($('btnPiP'))$('btnPiP').onclick=togglePiP;
 if($('btnFullscreen'))$('btnFullscreen').onclick=toggleFullscreen;
 $('btnAirPlay').onclick=()=>showAirPlayPicker();
@@ -2495,7 +2472,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=413',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=419',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
