@@ -1,4 +1,4 @@
-const CACHE='malgussi-v428';
+const CACHE='malgussi-v429';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./dog_default.png','./profile_default.png','./app-icon.png','./app-icon-192.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 // V4.26: only purge OLD APP-SHELL caches (malgussi-vNNN). NEVER delete the track

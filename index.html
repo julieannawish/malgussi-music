@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.28</title>
+<title>말구씨 음악 앱 · V4.29</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.28</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.29</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -647,7 +647,10 @@ function updateMediaSessionMetadata(artworkOverride){
   if(!t) return;
 
   const embedded=artworkOverride||artworkMap.get(t.id)||null;
-  const cover=embedded?.blobUrl || artworkToDataUrl(embedded);
+  // V4.29: iOS Safari's Media Session artwork does NOT accept blob: URLs — the lock
+  // screen then shows no cover at all (this is why an MP4 with a cached frame stored
+  // as a blob URL had a blank lock-screen cover). Use a data: URL, which iOS accepts.
+  const cover=artworkToDataUrl(embedded) || embedded?.blobUrl || null;
   let fallback='./dog_default.png'; try{fallback=new URL('./dog_default.png',location.href).href}catch(e){}
 
   try{
@@ -1078,7 +1081,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.28';
+const APP_VERSION='V4.29';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1675,6 +1678,25 @@ async function waitForVideoReady(timeoutMs=2500){
 }
 
 
+// V4.29: capture a frame from the LIVE main video element. While the video is
+// actually playing, its frames are decoded, so this works on iOS where decoding a
+// separate/detached video for a still frame is unreliable. Gives MP4 a real
+// lock-screen cover.
+function captureFrameFromMainVideo(){
+  try{
+    if(video && video.readyState>=2 && video.videoWidth>0){
+      const w=Math.min(512,video.videoWidth);
+      const h=Math.max(1,Math.round(w*(video.videoHeight||1)/(video.videoWidth||1)));
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(video,0,0,w,h);
+      const dataUrl=c.toDataURL('image/jpeg',0.82);
+      const b64=dataUrl.split(',')[1]||''; const bin=atob(b64);
+      const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      return {mime:'image/jpeg',bytes};
+    }
+  }catch(e){}
+  return null;
+}
 async function ensureCurrentArtworkForMediaSession(){
   const t=playlist[index];
   const f=t ? fileMap.get(t.id) : null;
@@ -1684,17 +1706,20 @@ async function ensureCurrentArtworkForMediaSession(){
   if(!art){
     try{ art=await extractArtwork(f); }catch(e){ art=null; }
   }
-  // MP4 fallback: use the first video frame if no embedded cover exists.
+  // MP4 fallback: prefer a frame from the live playing video, else a detached one.
   if(!art && isVideoFile(f)){
-    try{
-      const frame=await videoFirstFrame(f);
-      if(frame){
-        const bin=atob(frame.split(',')[1]||'');
-        const bytes=new Uint8Array(bin.length);
-        for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-        art={mime:'image/jpeg',bytes};
-      }
-    }catch(e){}
+    art=captureFrameFromMainVideo();
+    if(!art){
+      try{
+        const frame=await videoFirstFrame(f);
+        if(frame){
+          const bin=atob(frame.split(',')[1]||'');
+          const bytes=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+          art={mime:'image/jpeg',bytes};
+        }
+      }catch(e){}
+    }
   }
   if(art){
     cacheArtworkForTrack(t.id,art);
@@ -2712,7 +2737,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=428',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=429',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
