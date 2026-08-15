@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.24</title>
+<title>말구씨 음악 앱 · V4.25</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.24</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.25</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1016,7 +1016,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.24';
+const APP_VERSION='V4.25';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1773,6 +1773,11 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
     if(u)$('mainImage').dataset.url=u;
   }else{
     $('mainImage').hidden=true;
+    // V4.25: iOS shows a black box for a video that has not been decoded yet
+    // (it defers decoding until play). A poster image is shown without decoding,
+    // so use the embedded/cached cover if we have one, otherwise the default
+    // image — this is the MP4's cover on the main screen before playback starts.
+    try{ video.poster = currentArtwork ? artworkToUrl(currentArtwork) : 'dog_default.png'; }catch(e){}
   }
 
   // Media Session에는 embedded artwork를 Blob URL로 전달한다.
@@ -2347,10 +2352,22 @@ function cancelDrag(){
 }
 
 let progressRAF=0;
+// V4.25: iOS Safari does not decode media metadata until playback begins, so the
+// time bar would read 00:00 for a freshly-connected track on the main screen. We
+// remember each track's duration once it becomes known and show that cached value
+// immediately, so returning to a previously-played track shows its real length.
+function captureCurrentDuration(){
+  const m=activeMedia||audio;
+  const t=playlist[index];
+  if(!t) return;
+  const secs=Number.isFinite(m.duration)&&m.duration>0?Math.round(m.duration):0;
+  if(secs>0 && Number(t.duration||0)!==secs){ t.duration=secs; saveList(); }
+}
 function syncMediaUI(){
   const m=activeMedia||audio;
   if(!m)return;
-  const d=Number.isFinite(m.duration)&&m.duration>0?m.duration:0;
+  let d=Number.isFinite(m.duration)&&m.duration>0?m.duration:0;
+  if(!d){ const t=playlist[index]; const cd=Number(t&&t.duration||0); if(cd>0) d=cd; }
   const p=Number.isFinite(m.currentTime)&&m.currentTime>=0?m.currentTime:0;
   if(!dragging)$('seekBar').value=d?Math.min(1000,Math.max(0,Math.round(p/d*1000))):0;
   $('tvPosition').textContent=formatTime(p*1000);
@@ -2372,6 +2389,9 @@ startProgressSync();
   [video,'loadedmetadata'],[video,'durationchange'],[video,'loadeddata'],
   [video,'canplay'],[video,'timeupdate'],[video,'playing'],[video,'progress']
 ].forEach(([el,ev])=>el.addEventListener(ev,syncMediaUI));
+// V4.25: cache each track's real duration the moment iOS finally exposes it.
+[[audio,'loadedmetadata'],[audio,'durationchange'],[video,'loadedmetadata'],[video,'durationchange']]
+  .forEach(([el,ev])=>el.addEventListener(ev,captureCurrentDuration));
 // V4.19: transport state listeners (play/pause/playing/ended) are consolidated
 // into a single block below to remove the previously duplicated registrations.
 video.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
@@ -2598,7 +2618,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=424',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=425',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
