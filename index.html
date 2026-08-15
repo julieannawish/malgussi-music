@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.25</title>
+<title>말구씨 음악 앱 · V4.26</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.25</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.26</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1016,7 +1016,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.25';
+const APP_VERSION='V4.26';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -2618,7 +2618,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=425',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=426',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -3386,7 +3386,7 @@ function renderPL(){
     handle.addEventListener('pointercancel',e=>{clearTimer();active=false;mode=null;row.classList.remove('dragging');document.querySelectorAll('.v352-pl-row.drop').forEach(x=>x.classList.remove('drop'));});
   }
   function moveGroup(from,to){const ids=psel.size?[...psel]:[playlist[from]?.id];const moving=playlist.filter(t=>ids.includes(t.id));const rest=playlist.filter(t=>!ids.includes(t.id));const anchor=playlist[to];let at=rest.findIndex(t=>t.id===anchor?.id);if(at<0)at=rest.length;playlist=rest.slice(0,at).concat(moving,rest.slice(at));saveList();renderPL();toast2(moving.length+'개 항목의 순서를 변경했습니다.')}
-  q('v352Delete').onclick=()=>{
+  q('v352Delete').onclick=async()=>{
     if(!psel.size)return;
     if(!confirm('선택한 '+psel.size+'곡을 재생목록에서 삭제할까요?\n원본 파일은 삭제하지 않습니다.'))return;
     const removedIds=new Set(psel);
@@ -3397,27 +3397,33 @@ function renderPL(){
     psel.clear();
     index=Math.max(0,index-removedBeforeIndex);
     if(index>=playlist.length)index=Math.max(0,playlist.length-1);
-    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);deleteTrackFile(id).catch(()=>{})});
+    removedIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);});
     saveList();
     if(currentId&&removedIds.has(currentId)){
       if(playlist.length)loadCurrent(false);else showDefaultScreen();
     }
     renderPL();renderStorageInfo();updateUI();
+    // V4.26: wait for the durable copies to actually be removed, then refresh the
+    // "앱에 저장됨 N/M곡" summary so it stays in sync with the delete.
+    await Promise.all([...removedIds].map(id=>deleteTrackFile(id).catch(()=>{})));
+    renderPlaylistDurableSummary();
   };
-  q('v352Deduplicate').onclick=()=>{
+  q('v352Deduplicate').onclick=async()=>{
     const dupIds=duplicateGroups();
     if(!dupIds.size){toast2('중복된 곡이 없습니다.');return;}
     if(!confirm(`중복된 ${dupIds.size}곡을 재생목록에서 삭제할까요?\n같은 이름과 파일 크기가 같은 항목 중 첫 번째 곡은 남깁니다.\n원본 파일은 삭제하지 않습니다.`))return;
     const currentId=playlist[index]?.id;
     const removedBefore=[...dupIds].filter(id=>{const pos=playlist.findIndex(t=>t.id===id);return pos>=0&&pos<index}).length;
     playlist=playlist.filter(t=>!dupIds.has(t.id));
-    dupIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);deleteTrackFile(id).catch(()=>{})});
+    dupIds.forEach(id=>{fileMap.delete(id);artworkMap.delete(id);});
     psel.clear();
     index=Math.max(0,index-removedBefore);
     if(index>=playlist.length)index=Math.max(0,playlist.length-1);
     saveList();
     if(currentId&&dupIds.has(currentId)){if(playlist.length)loadCurrent(false);else showDefaultScreen();}
     renderPL();renderStorageInfo();updateUI();
+    await Promise.all([...dupIds].map(id=>deleteTrackFile(id).catch(()=>{})));
+    renderPlaylistDurableSummary();
     toast2(`중복 ${dupIds.size}곡을 삭제했습니다.`);
   };
   q('v352Reset').onclick=()=>{if(!confirm('재생목록과 앱 설정을 초기화할까요?\n원본 음악·영상은 삭제하지 않습니다.'))return;localStorage.removeItem(KEY);loadPlaylistBackup().then(()=>openPlaylistBackupDB()).then(db=>{try{const tx=db.transaction(PLAYLIST_BACKUP_STORE,'readwrite');tx.objectStore(PLAYLIST_BACKUP_STORE).delete('playlist')}catch(e){}});localStorage.removeItem(K);localStorage.removeItem(MK);localStorage.removeItem(FM);localStorage.removeItem(CURRENT_INDEX_KEY);localStorage.removeItem(ARTWORK_CACHE_KEY);clearTrackFileCache();playlist=[];fileMap.clear();mediaFiles=[];playlistPickerFiles=[];psel.clear();msel.clear();pmsel.clear();prof={name:'말구씨 음악',tagline:'내 음악을 편하게 듣는 작은 음악상자',image:'profile_default.png'};applyProf();renderPL();renderMedia();updateUI();toast2('초기화했습니다.')};
