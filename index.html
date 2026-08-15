@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.19</title>
+<title>말구씨 음악 앱 · V4.20</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.19</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.20</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -759,10 +759,12 @@ async function cacheMediaFiles(files,replaceAll=true){
     let ok=0;
     for(const f of arr){
       try{
+        // V4.20: store real bytes, not a File reference that dies on iOS restart.
+        const durable=await materializeMediaBlob(f);
         await new Promise((resolve,reject)=>{
           const tx=db.transaction(MEDIA_CACHE_STORE,'readwrite');
           const key=[String(f.name||''),Number(f.size||0),Number(f.lastModified||0),f.webkitRelativePath||f.name||''].join('|');
-          tx.objectStore(MEDIA_CACHE_STORE).put({blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name},key);
+          tx.objectStore(MEDIA_CACHE_STORE).put({blob:durable,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name},key);
           tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
         });
         ok++;
@@ -803,12 +805,27 @@ async function openTrackCacheDB(){
 }
 const TRACK_CACHE_API='malgussi-track-cache-v5';
 function trackCacheRequest(trackId){ return new Request('./__malgussi_track_cache/'+encodeURIComponent(String(trackId))); }
-async function saveTrackFileToCacheAPI(trackId,f){
-  if(!('caches' in window) || !trackId || !f) return false;
+// V4.20: iOS/WebKit can persist a File picked from <input> as a *reference* to a
+// temporary file that is discarded when the PWA is closed. The stored record then
+// reads back empty on relaunch, so every playlist item — MP3 and MP4 alike —
+// shows '원본 없음' even though the add-time read-back verification passed. Copy
+// the actual bytes into an in-memory Blob before persisting so IndexedDB and
+// Cache Storage keep real, restart-durable data. Returns the original File if the
+// bytes cannot be read (already-materialized cache Files, etc.).
+async function materializeMediaBlob(f){
+  try{
+    if(f instanceof Blob && !(f instanceof File)) return f; // already a plain Blob
+    const buf=await f.arrayBuffer();
+    return new Blob([buf],{type:(f && f.type)||'application/octet-stream'});
+  }catch(e){ return f; }
+}
+async function saveTrackFileToCacheAPI(trackId,body,meta){
+  if(!('caches' in window) || !trackId || !body) return false;
+  const m=meta||body;
   try{
     const cache=await caches.open(TRACK_CACHE_API);
-    const headers={'Content-Type':f.type||'application/octet-stream','X-Malgussi-Name':encodeURIComponent(f.name||''),'X-Malgussi-Size':String(f.size||0),'X-Malgussi-Modified':String(f.lastModified||0),'X-Malgussi-Path':encodeURIComponent(f.webkitRelativePath||f.name||'')};
-    await cache.put(trackCacheRequest(trackId),new Response(f,{headers}));
+    const headers={'Content-Type':m.type||body.type||'application/octet-stream','X-Malgussi-Name':encodeURIComponent(m.name||''),'X-Malgussi-Size':String(m.size||body.size||0),'X-Malgussi-Modified':String(m.lastModified||0),'X-Malgussi-Path':encodeURIComponent(m.path||m.webkitRelativePath||m.name||'')};
+    await cache.put(trackCacheRequest(trackId),new Response(body,{headers}));
     return true;
   }catch(e){console.warn('saveTrackFile cache-api',e);return false;}
 }
@@ -834,14 +851,18 @@ const TRACK_CACHE_LARGE_BYTES=25*1024*1024;
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
   const isLarge=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES;
+  // V4.20: copy the real bytes ONCE, then persist the same durable Blob to both
+  // stores. This is what actually survives an iOS PWA restart (see materializeMediaBlob).
+  const meta={name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name};
+  const durable=await materializeMediaBlob(f);
   let idbOk=false, apiOk=false;
   try{
     const db=await openTrackCacheDB();
     await new Promise((resolve,reject)=>{
       const tx=db.transaction(TRACK_CACHE_STORE,'readwrite');
       tx.objectStore(TRACK_CACHE_STORE).put({
-        blob:f,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,
-        type:f.type||'',path:f.webkitRelativePath||f.name,trackId
+        blob:durable,name:meta.name,size:meta.size,lastModified:meta.lastModified,
+        type:meta.type,path:meta.path,trackId
       },trackId);
       tx.oncomplete=()=>{idbOk=true;resolve();};
       tx.onerror=()=>reject(tx.error);
@@ -876,7 +897,7 @@ async function saveTrackFile(trackId,f){
     return true;
   }
 
-  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f); }
+  try{ apiOk=await saveTrackFileToCacheAPI(trackId,durable,meta); }
   catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
   if(apiOk){
     try{
@@ -961,7 +982,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.19';
+const APP_VERSION='V4.20';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -2488,7 +2509,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=419',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=420',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
