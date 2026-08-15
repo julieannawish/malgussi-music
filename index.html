@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.23</title>
+<title>말구씨 음악 앱 · V4.24</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.23</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.24</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1016,7 +1016,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.23';
+const APP_VERSION='V4.24';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -2598,7 +2598,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=423',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=424',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2784,6 +2784,13 @@ let mediaFiles=[];
           try{ await playActiveMedia(true); }catch(e){}
         }
       }
+      // V4.24: the current track may have been (re)connected inside management
+      // while the main screen still shows the empty "음악 또는 동영상을 넣어 주세요"
+      // state. If it is connected but not yet loaded into the player, populate the
+      // main screen — title, cover image and time bar — WITHOUT auto-playing.
+      const ct=playlist[index];
+      const cf=ct && fileMap.get(ct.id);
+      if(cf && loadedTrackId!==ct.id){ try{ await loadCurrent(false); }catch(e){} }
       playlistWasPlaying=false; playlistOpenedIndex=-1; playlistOpenedTrackId=null;
     }
   }
