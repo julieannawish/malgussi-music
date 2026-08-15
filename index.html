@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.21</title>
+<title>말구씨 음악 앱 · V4.22</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.21</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.22</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -983,7 +983,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.21';
+const APP_VERSION='V4.22';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1203,15 +1203,18 @@ async function restorePlaylistIfMissing(){
   return true;
 }
 
-// V4.20: lightweight "is this track durably stored?" probe. Checks Cache Storage
-// by header (no body read) then IndexedDB, so it stays cheap even for large MP4s.
+// V4.22: truthful "is this track durably stored?" probe. Checks the actual stored
+// BODY size (Blob.size is metadata, so this stays cheap even for a large MP4 — the
+// bytes are not read into JS). The earlier version trusted the Cache Storage header,
+// which can survive even when the body did not, giving a false N/N. Now the count
+// reflects exactly what restoreTrackFileMap can actually reload.
 async function trackHasDurableCopy(trackId){
   if(!trackId) return false;
   try{
     if('caches' in window){
       const c=await caches.open(TRACK_CACHE_API);
       const res=await c.match(trackCacheRequest(trackId));
-      if(res && Number(res.headers.get('X-Malgussi-Size')||0)>0) return true;
+      if(res){ const b=await res.blob(); if(b && Number(b.size||0)>0) return true; }
     }
   }catch(e){}
   try{
@@ -2552,7 +2555,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=421',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=422',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2626,6 +2629,16 @@ let mediaFiles=[];
 
   async function ensurePlaylistSources(){
     if(!playlist.length || playlist.every(t=>g1HasLiveFile(t))) return true;
+    // V4.22: restore from the per-track cache (IndexedDB + Cache Storage, keyed by
+    // track id) FIRST. On iPhone there is no folder handle, so this is where the
+    // originals actually live. The earlier code only consulted the filename media
+    // cache and the folder handle, so a file that was durably saved (durability
+    // shows N/N) still displayed '원본 없음' here because fileMap was never populated
+    // from the track cache. restoreTrackFileMap() fills fileMap from that store.
+    try{
+      await restoreTrackFileMap();
+      if(playlist.every(t=>g1HasLiveFile(t))) return true;
+    }catch(e){}
     try{
       const cached=await loadCachedMediaFiles();
       if(cached.length){
