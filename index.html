@@ -791,7 +791,7 @@ async function loadCachedMediaFiles(){
 // V4.12: persist the actual file-to-track relationship by playlist track ID.
 // The old cache could restore the files but had to rediscover the relationship
 // by filename. On iOS that could leave playlist=3 while fileMap=empty.
-const TRACK_CACHE_DB='malgussi_track_cache_v2';
+const TRACK_CACHE_DB='malgussi_track_cache_v3';
 const TRACK_CACHE_STORE='tracks';
 async function openTrackCacheDB(){
   return await new Promise((resolve,reject)=>{
@@ -801,7 +801,7 @@ async function openTrackCacheDB(){
     req.onerror=()=>reject(req.error);
   });
 }
-const TRACK_CACHE_API='malgussi-track-cache-v4';
+const TRACK_CACHE_API='malgussi-track-cache-v5';
 function trackCacheRequest(trackId){ return new Request('./__malgussi_track_cache/'+encodeURIComponent(String(trackId))); }
 async function saveTrackFileToCacheAPI(trackId,f){
   if(!('caches' in window) || !trackId || !f) return false;
@@ -829,11 +829,8 @@ async function loadTrackFileFromCacheAPI(trackId){
   }catch(e){return null;}
 }
 async function saveTrackFile(trackId,f){
-  if(!trackId||!f||!isMediaFile(f))return false;
+  if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
   let idbOk=false, apiOk=false;
-  // V4.18: write to BOTH persistent stores. The old code wrote to Cache API
-  // only when IndexedDB failed, so an IndexedDB write that later could not be
-  // restored left the playlist with no usable MP4 on relaunch.
   try{
     const db=await openTrackCacheDB();
     await new Promise((resolve,reject)=>{
@@ -846,10 +843,31 @@ async function saveTrackFile(trackId,f){
       tx.onerror=()=>reject(tx.error);
       tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
     });
-  }catch(e){console.warn('saveTrackFile idb',e);}
-  try{
-    apiOk=await saveTrackFileToCacheAPI(trackId,f);
-  }catch(e){console.warn('saveTrackFile cache-api',e);}
+  }catch(e){console.warn('G1 saveTrackFile idb',e);}
+  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f); }
+  catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
+
+  // G1: do not report a persistent save until at least one durable store can
+  // actually return a non-empty media File.
+  if(idbOk){
+    try{
+      const check=await (async()=>{
+        const db=await openTrackCacheDB();
+        return await new Promise((resolve,reject)=>{
+          const req=db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).get(trackId);
+          req.onsuccess=()=>resolve(req.result?.blob||null);
+          req.onerror=()=>reject(req.error);
+        });
+      })();
+      idbOk=!!(check && Number(check.size||0)>0);
+    }catch(e){idbOk=false;}
+  }
+  if(apiOk){
+    try{
+      const check=await loadTrackFileFromCacheAPI(trackId);
+      apiOk=!!(check && isMediaFile(check) && Number(check.size||0)>0);
+    }catch(e){apiOk=false;}
+  }
   return idbOk||apiOk;
 }
 async function loadTrackFile(trackId){
@@ -869,7 +887,7 @@ async function loadTrackFile(trackId){
       };
       req.onerror=()=>reject(req.error);
     });
-    if(f && Number(f.size||0)>0)return f;
+    if(f && isMediaFile(f) && Number(f.size||0)>0)return f;
   }catch(e){}
   return await loadTrackFileFromCacheAPI(trackId);
 }
@@ -878,7 +896,7 @@ async function restoreTrackFileMap(){
   const results=await Promise.all(playlist.map(async t=>({t,f:fileMap.has(t.id)?fileMap.get(t.id):await loadTrackFile(t.id)})));
   let linked=0;
   for(const {t,f} of results){
-    if(!f)continue;
+    if(!f || !isMediaFile(f) || Number(f.size||0)<=0)continue;
     if(!fileMap.has(t.id))linked++;
     fileMap.set(t.id,f);
     t.size=Number(f.size)||t.size||0;
@@ -919,12 +937,15 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
-// V4.18 persistence invariant:
+// V4.19 G1 persistence invariant:
 // A playlist item is considered relinkable only when its trackId points to a
 // persisted File in IndexedDB or Cache Storage, OR when the saved folder can
 // deterministically rediscover the same file. Adding a file therefore always
 // calls saveTrackFile(trackId,file) before the add operation reports success.
-const APP_VERSION='V4.18';
+// G1 scope only: file discovery, track binding, persistence, and relink.
+// Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
+// not redesigned in this package; those belong to later groups.
+const APP_VERSION='V4.19';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1687,40 +1708,42 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
 
 async function resolveTrackFile(t){
   if(!t)return null;
-  let f=fileMap.get(t.id);
-  if(f)return f;
 
-  // First priority: exact trackId cache.
+  // G1-1: live File binding wins, but only if it is a real media File.
+  let f=fileMap.get(t.id);
+  if(f && isMediaFile(f) && Number(f.size||0)>0)return f;
+  if(f)fileMap.delete(t.id);
+
+  // G1-2: exact trackId persistent cache.
   try{
     f=await loadTrackFile(t.id);
-    if(f){
-      fileMap.set(t.id,f);
+    if(f && isMediaFile(f) && Number(f.size||0)>0){
+      g1BindTrack(t,f);
       return f;
     }
   }catch(e){}
 
-  // Second: persistent folder-media cache, matched by filename + size,
-  // with path as a preferred but never mandatory discriminator.
+  // G1-3: persistent folder-media cache, prefer exact path then name+size.
   try{
     const cached=await loadCachedMediaFiles();
     if(cached.length){
       const fn=exactFileName(t.name);
+      const nn=normalizeFileName(t.name);
       const size=Number(t.size||0);
-      let candidates=cached.filter(x=>exactFileName(x.name)===fn && (!size || Number(x.size||0)===size));
-      if(candidates.length!==1){
-        const nn=normalizeFileName(t.name);
-        candidates=cached.filter(x=>normalizeFileName(x.name)===nn && (!size || Number(x.size||0)===size));
-      }
+      let candidates=cached.filter(x=>exactFileName(x.name)===fn && (!size||Number(x.size||0)===size) && t.path && x.webkitRelativePath===t.path);
+      if(candidates.length!==1)candidates=cached.filter(x=>exactFileName(x.name)===fn && (!size||Number(x.size||0)===size));
+      if(candidates.length!==1)candidates=cached.filter(x=>normalizeFileName(x.name)===nn && (!size||Number(x.size||0)===size));
       if(candidates.length===1){
         f=candidates[0];
-        fileMap.set(t.id,f);
-        await saveTrackFile(t.id,f);
-        return f;
+        if(g1BindTrack(t,f)){
+          await saveTrackFile(t.id,f);
+          return f;
+        }
       }
     }
   }catch(e){}
 
-  // Third: saved folder handle, when iOS/browser still grants access.
+  // G1-4: saved folder handle, if the browser still grants access.
   try{
     const h=await loadMusicDirectoryHandle();
     if(h){
@@ -1729,18 +1752,18 @@ async function resolveTrackFile(t){
       if(perm==='granted'){
         const files=await collectDirectoryMedia(h,'');
         const fn=exactFileName(t.name);
+        const nn=normalizeFileName(t.name);
         const size=Number(t.size||0);
-        let candidates=files.filter(x=>exactFileName(x.name)===fn && (!size || Number(x.size||0)===size));
-        if(candidates.length!==1){
-          const nn=normalizeFileName(t.name);
-          candidates=files.filter(x=>normalizeFileName(x.name)===nn && (!size || Number(x.size||0)===size));
-        }
+        let candidates=files.filter(x=>t.path && x.webkitRelativePath===t.path);
+        if(candidates.length!==1)candidates=files.filter(x=>exactFileName(x.name)===fn && (!size||Number(x.size||0)===size));
+        if(candidates.length!==1)candidates=files.filter(x=>normalizeFileName(x.name)===nn && (!size||Number(x.size||0)===size));
         if(candidates.length===1){
           f=candidates[0];
-          fileMap.set(t.id,f);
-          await saveTrackFile(t.id,f);
-          await cacheMediaFiles([f],false);
-          return f;
+          if(g1BindTrack(t,f)){
+            await saveTrackFile(t.id,f);
+            await cacheMediaFiles([f],false);
+            return f;
+          }
         }
       }
     }
@@ -1964,15 +1987,15 @@ async function relinkFromFolder(files, cleanupMissing=false, fastBoot=false){
   for(const t of playlist){
     const fn=exactFileName(t.name), nn=normalizeFileName(t.name);
     let candidates=arr.filter(f=>!used.has(f)&&t.path&&f.webkitRelativePath&&f.webkitRelativePath===t.path);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){g1BindTrack(t,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){g1BindTrack(t,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn&&Number(f.size||0)===Number(t.size||0));
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){g1BindTrack(t,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&exactFileName(f.name)===fn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){g1BindTrack(t,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
     candidates=arr.filter(f=>!used.has(f)&&normalizeFileName(f.name)===nn);
-    if(candidates.length===1){fileMap.set(t.id,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
+    if(candidates.length===1){g1BindTrack(t,candidates[0]);await saveTrackFile(t.id,candidates[0]);used.add(candidates[0]);connected++;continue;}
   }
   saveVerifiedScan(arr);
   saveList(); renderPlaylist(); renderStorageInfo(); updateUI();
@@ -2545,13 +2568,13 @@ let mediaFiles=[];
   function folderDisplayPath(){return [pickerRootName||'기본 미디어 폴더',...pickerPath].join(' / ');}
 
   async function ensurePlaylistSources(){
-    if(!playlist.length || playlist.every(t=>fileMap.has(t.id))) return true;
+    if(!playlist.length || playlist.every(t=>g1HasLiveFile(t))) return true;
     try{
       const cached=await loadCachedMediaFiles();
       if(cached.length){
         mediaFiles=cached;
         await relinkFromFolder(cached,false);
-        if(playlist.every(t=>fileMap.has(t.id))) return true;
+        if(playlist.every(t=>g1HasLiveFile(t))) return true;
       }
     }catch(e){}
     try{
@@ -2564,12 +2587,12 @@ let mediaFiles=[];
           if(fs.length){
             await relinkFromFolder(fs,false,true);
             await cacheLinkedPlaylistFiles(fs);
-            if(playlist.every(t=>fileMap.has(t.id))) return true;
+            if(playlist.every(t=>g1HasLiveFile(t))) return true;
           }
         }
       }
     }catch(e){}
-    return playlist.every(t=>fileMap.has(t.id));
+    return playlist.every(t=>g1HasLiveFile(t));
   }
   function scrollPlaylistToCurrent(){
     const box=q('v352PlaylistList');
@@ -2672,7 +2695,7 @@ let mediaFiles=[];
       if(playlist.some(t=>fileEquivalent(t,f))) continue;
       const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
       playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
-      fileMap.set(id,f); newItems.push(id);
+      g1BindTrack(playlist[playlist.length-1],f); newItems.push(id);
     }
     pmsel.clear(); updatePlaylistPickerSelectionUI();
     if(!newItems.length){toast2('선택한 곡은 이미 재생목록에 있습니다.');return;}
@@ -2738,18 +2761,14 @@ let mediaFiles=[];
         return sameName && sameSize;
       });
       if(existing){
-        fileMap.set(existing.id,f);
-        existing.name=f.name;
-        existing.size=Number(f.size)||existing.size||0;
-        existing.type=f.type||existing.type||'';
-        existing.lastModified=Number(f.lastModified)||existing.lastModified||0;
-        existing.path=f.webkitRelativePath||existing.path||f.name;
+        g1BindTrack(existing,f);
         await saveTrackFile(existing.id,f);
         continue;
       }
       const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
-      playlist.push({id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name});
-      fileMap.set(id,f);
+      const nt={id,name:f.name,size:Number(f.size)||0,lastModified:Number(f.lastModified)||0,type:f.type||'',path:f.webkitRelativePath||f.name};
+      playlist.push(nt);
+      g1BindTrack(nt,f);
       await saveTrackFile(id,f);
       newItems.push(id);
     }
@@ -2846,17 +2865,15 @@ let mediaFiles=[];
       }catch(e){ console.warn('playlist explorer permission/read',e); }
     }
 
-    // Cached files are only acceptable when their relative path is preserved.
-    // A flat cache is deliberately rejected: showing it would turn this into
-    // the old "전체/음악/영상" media list instead of a folder explorer.
+    // G1: cached files are valid even when the selected folder's files are at
+    // its root and therefore have no '/' in webkitRelativePath.
     if(!playlistPickerFiles.length){
       try{
         const cached=await loadCachedMediaFiles();
-        const hasPath=cached.length>0 && cached.every(f=>String(f.webkitRelativePath||'').includes('/'));
-        if(hasPath){
+        if(cached.length){
           playlistPickerFiles=cached;
           const first=String(cached[0].webkitRelativePath||'').split('/').filter(Boolean);
-          pickerRootName=(first.length>1?first[0]:'기본 미디어');
+          pickerRootName=(first.length>1?first[0]:(JSON.parse(localStorage.getItem(FM)||'null')?.name||'기본 미디어'));
         }
       }catch(e){ playlistPickerFiles=[]; }
     }
@@ -3065,7 +3082,21 @@ let mediaFiles=[];
   }
   document.querySelectorAll('[data-v352-filter]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-v352-filter]').forEach(x=>x.classList.remove('on'));b.classList.add('on');mfilter=b.dataset.v352Filter;renderMedia()});
   function toast2(m){q('status').textContent=m;setTimeout(()=>{if(q('status').textContent===m)q('status').textContent=''},1800)}
-  function renderPL(){
+  function g1HasLiveFile(t){
+  const f=t && fileMap.get(t.id);
+  return !!(f && isMediaFile(f) && Number(f.size||0)>0);
+}
+function g1BindTrack(t,f){
+  if(!t || !f || !isMediaFile(f) || Number(f.size||0)<=0) return false;
+  fileMap.set(t.id,f);
+  t.name=f.name||t.name;
+  t.size=Number(f.size)||Number(t.size)||0;
+  t.type=f.type||t.type||'';
+  t.lastModified=Number(f.lastModified)||Number(t.lastModified)||0;
+  t.path=f.webkitRelativePath||t.path||f.name;
+  return true;
+}
+function renderPL(){
     const box=q('v352PlaylistList');
     box.innerHTML='';
     if(!playlist.length){box.innerHTML='<div class="v352-empty">아직 재생목록이 없습니다.<br>아래 ＋ 추가에서 기본 미디어 폴더의 파일을 선택하세요.</div>';updatePF();return;}
@@ -3087,7 +3118,7 @@ let mediaFiles=[];
       const n=document.createElement('span');n.className='v352-num';n.textContent=String(i+1).padStart(2,'0');
       const info=document.createElement('div');info.className='v352-info';
       const nm=document.createElement('div');nm.className='v352-name';nm.textContent=t.name;
-      const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(fileMap.has(t.id)?' · 연결됨':' · 원본 없음');
+      const su=document.createElement('div');su.className='v352-sub';su.textContent=(isVideoFile(t)?'MP4':'음악')+(g1HasLiveFile(t)?' · 연결됨':' · 원본 없음');
       info.append(nm,su);
       const d=document.createElement('div');d.className='v352-drag';d.textContent='≡';
       row.append(c,n,info,d);
@@ -3097,7 +3128,7 @@ let mediaFiles=[];
         index=i;
         currentTrackId=t.id;
         persistCurrentTrack();
-        if(!fileMap.has(t.id)){
+        if(!g1HasLiveFile(t)){
           const ok=await reconnectSavedFolderForPlayback();
           if(!ok){q('status').textContent='이 곡의 원본 파일을 연결할 수 없습니다.';return;}
         }
