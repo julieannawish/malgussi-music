@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.26</title>
+<title>말구씨 음악 앱 · V4.27</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -448,7 +448,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.26</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.27</span></div>
     </section>
     <div id="profileEditor" class="v352-section profile-editor" hidden>
       <div class="v352-head-mini"><button id="profileBack" class="mini-back">‹</button><div class="v352-section-title">👤 프로필</div><button id="profileSave" class="mini-save">저장</button></div>
@@ -1000,6 +1000,35 @@ async function deleteTrackFile(trackId){
     await deleteTrackRecordsIDB(db,trackId); // removes single-blob AND chunk records
   }catch(e){}
 }
+// V4.27: remove stored bytes for track ids that are no longer in the playlist.
+// Re-adding a file across app versions created a new track id each time, leaving
+// the old id's blob/chunks behind and silently eating the device storage quota
+// until a new large MP4 could no longer be saved. Returns how many ids it freed.
+async function cleanupOrphanTrackStorage(){
+  let freed=0;
+  const alive=new Set(playlist.map(t=>t.id));
+  try{
+    const db=await openTrackCacheDB();
+    const keys=await idbPromise(db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).getAllKeys());
+    const orphans=new Set();
+    for(const k of (keys||[])){
+      const s=String(k);
+      const tid=s.includes('::c::')?s.slice(0,s.indexOf('::c::')):s;
+      if(tid && !alive.has(tid)) orphans.add(tid);
+    }
+    for(const tid of orphans){ await deleteTrackRecordsIDB(db,tid); freed++; }
+  }catch(e){}
+  try{
+    if('caches' in window){
+      const c=await caches.open(TRACK_CACHE_API);
+      for(const req of await c.keys()){
+        const m=req.url.split('/__malgussi_track_cache/')[1];
+        if(m){ let tid=''; try{tid=decodeURIComponent(m);}catch(e){tid=m;} if(tid && !alive.has(tid)) await c.delete(req); }
+      }
+    }
+  }catch(e){}
+  return freed;
+}
 async function canUseSavedMusicDirectory(){
   const h=await loadMusicDirectoryHandle();
   if(!h || typeof h.queryPermission!=='function') return false;
@@ -1016,7 +1045,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.26';
+const APP_VERSION='V4.27';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1289,14 +1318,26 @@ let durableSummaryToken=0;
 async function renderPlaylistDurableSummary(){
   const el=document.getElementById('v352DurableSummary');
   if(!el) return;
-  if(!playlist.length){ el.textContent=''; return; }
+  if(!playlist.length){ el.innerHTML=''; return; }
   const my=++durableSummaryToken;
   el.textContent='앱 저장 상태 확인 중…';
   let n=0;
   for(const t of playlist){ if(await trackHasDurableCopy(t.id)) n++; }
   if(my!==durableSummaryToken) return;
   const all=n===playlist.length;
-  el.textContent=`앱에 저장됨(재실행 복원 가능): ${n} / ${playlist.length}곡`+(all?' ✓':' — 이 숫자가 곡 수와 같아야 재실행 후 복원됩니다');
+  let line=`앱에 저장됨(재실행 복원 가능): ${n} / ${playlist.length}곡`+(all?' ✓':' — 이 숫자가 곡 수와 같아야 재실행 후 복원됩니다');
+  // V4.27: show storage usage vs quota. If a file could not be saved, this reveals
+  // whether the device offline-storage limit was reached.
+  let usageLine='';
+  try{
+    if(navigator.storage && navigator.storage.estimate){
+      const est=await navigator.storage.estimate();
+      if(my!==durableSummaryToken) return;
+      const used=(Number(est.usage||0)/1048576), quota=(Number(est.quota||0)/1048576);
+      usageLine=`저장공간 사용 ${used.toFixed(0)}MB / 한도 약 ${quota.toFixed(0)}MB`;
+    }
+  }catch(e){}
+  el.innerHTML=line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+(usageLine?`<br><span style="color:#6B625D">${usageLine}</span>`:'');
   el.style.color=all?'#2E7D32':'#B00020';
 }
 
@@ -2618,7 +2659,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=426',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=427',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -2857,6 +2898,9 @@ let mediaFiles=[];
     }
     
     saveList();
+    // V4.27: reclaim storage from deleted/old track ids before saving new files,
+    // so a fresh large MP4 is not rejected by a quota filled with orphaned bytes.
+    try{ await cleanupOrphanTrackStorage(); }catch(e){}
     // V4.18: every newly-added track must be persisted by its own trackId.
     // The previous add path only cached the folder and skipped saveTrackFile(),
     // which is why an MP4 could exist immediately after adding but become
@@ -2901,6 +2945,7 @@ let mediaFiles=[];
     const selected=Array.from(e.target.files||[]).filter(isMediaFile);
     e.target.value='';
     if(!selected.length){ toast2('파일을 선택하지 않았습니다.'); return; }
+    try{ await cleanupOrphanTrackStorage(); }catch(err){} // V4.27: free quota from old ids first
     const newItems=[];
     for(const f of selected){
       const existing=playlist.find(t=>{
@@ -3431,6 +3476,7 @@ function renderPL(){
     loadFolderMeta2();
     await restorePlaylistIfMissing();
     renderMedia();renderPL();updateMode();applyProf(); if(q('appVersion')) q('appVersion').textContent=APP_VERSION;
+    try{ await cleanupOrphanTrackStorage(); }catch(e){} // V4.27: reclaim quota from old track ids
     try{
       const h=await loadMusicDirectoryHandle();
       let p='denied';
