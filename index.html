@@ -828,8 +828,12 @@ async function loadTrackFileFromCacheAPI(trackId){
     return f;
   }catch(e){return null;}
 }
+// V4.19: 25MB and up counts as "large". Large media is stored in ONE durable
+// place, not two, to avoid doubling storage pressure (see the fallback note below).
+const TRACK_CACHE_LARGE_BYTES=25*1024*1024;
 async function saveTrackFile(trackId,f){
   if(!trackId||!f||!isMediaFile(f)||Number(f.size||0)<=0)return false;
+  const isLarge=Number(f.size||0)>=TRACK_CACHE_LARGE_BYTES;
   let idbOk=false, apiOk=false;
   try{
     const db=await openTrackCacheDB();
@@ -844,11 +848,9 @@ async function saveTrackFile(trackId,f){
       tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted'));
     });
   }catch(e){console.warn('G1 saveTrackFile idb',e);}
-  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f); }
-  catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
 
-  // G1: do not report a persistent save until at least one durable store can
-  // actually return a non-empty media File.
+  // G1: do not report a persistent save until IndexedDB can actually return a
+  // non-empty media File back.
   if(idbOk){
     try{
       const check=await (async()=>{
@@ -862,6 +864,20 @@ async function saveTrackFile(trackId,f){
       idbOk=!!(check && Number(check.size||0)>0);
     }catch(e){idbOk=false;}
   }
+
+  // V4.19: Cache Storage is a FALLBACK, not an unconditional second full copy.
+  // The old code wrote every file to BOTH IndexedDB and Cache Storage, so a large
+  // documentary MP4 consumed twice the storage and iPhone PWAs hit their quota at
+  // half the real capacity — leaving later files as '원본 없음' after relaunch.
+  // Large files that persisted durably in IndexedDB now skip the redundant copy
+  // (and drop any stale one). Small files keep the redundant copy for resilience.
+  if(idbOk && isLarge){
+    try{ if('caches' in window){const c=await caches.open(TRACK_CACHE_API); await c.delete(trackCacheRequest(trackId));} }catch(e){}
+    return true;
+  }
+
+  try{ apiOk=await saveTrackFileToCacheAPI(trackId,f); }
+  catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
   if(apiOk){
     try{
       const check=await loadTrackFileFromCacheAPI(trackId);
@@ -2559,6 +2575,14 @@ let mediaFiles=[];
       if(h){
         let perm='denied';
         try{perm=await h.queryPermission({mode:'read'});}catch(e){}
+        // V4.19: opening 재생목록 관리 is a user gesture, so we may re-request the
+        // read permission that the browser resets to 'prompt' on restart. Without
+        // this the saved whole-folder handle stays unusable HERE and items wrongly
+        // show '원본 없음' until the ＋추가 picker (which does request) is opened.
+        // This mirrors loadPlaylistPickerFiles() and reconnectSavedFolderForPlayback().
+        if(perm!=='granted' && typeof h.requestPermission==='function'){
+          try{perm=await h.requestPermission({mode:'read'});}catch(e){}
+        }
         if(perm==='granted'){
           const fs=await collectDirectoryMedia(h,'');
           if(fs.length){
