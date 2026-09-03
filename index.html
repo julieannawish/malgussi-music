@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.32</title>
+<title>말구씨 음악 앱 · V4.33</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -453,7 +453,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.32</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.33</span></div>
     </section>
     <section class="v352-section" id="v352InstallSection" hidden>
       <div class="v352-section-title">📲 홈 화면에 설치</div>
@@ -1095,7 +1095,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.32';
+const APP_VERSION='V4.33';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1820,7 +1820,12 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
 
   if(f){
     fileMap.set(t.id,f);
-    try{ await saveTrackFile(t.id,f); }catch(e){}
+    // V4.33: persist in the BACKGROUND, do not await. Awaiting the save (which now
+    // does read-back checks and, for large files, chunk work) delayed the actual
+    // play() call; on iOS that lost the "continuous playback" activation, so the
+    // NEXT track after a song ended would load but not start. The file is already
+    // live in fileMap for playback, so the durable copy can finish afterwards.
+    saveTrackFile(t.id,f).catch(()=>{});
   }
   if(!f){
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
@@ -2586,23 +2591,26 @@ async function advanceAfterEnd(){
   }
   // Always derive the next action from the CURRENT mode and CURRENT index.
   // This prevents a previous selection from controlling one-track repeat.
+  // V4.33: fastBoot=true skips the pre-play cover extraction so the next track
+  // starts immediately (keeps iOS continuous playback alive). The cover fills in
+  // right after via the background artwork loader in loadCurrent.
   if(mode==='one'){
-    await loadCurrent(true);
+    await loadCurrent(true,false,true);
     return;
   }
   if(mode==='random'){
-    if(playlist.length===1){await loadCurrent(true);return;}
+    if(playlist.length===1){await loadCurrent(true,false,true);return;}
     let next=index;
     while(next===index) next=Math.floor(Math.random()*playlist.length);
     index=next;
     persistCurrentTrack();
-    await loadCurrent(true);
+    await loadCurrent(true,false,true);
     return;
   }
   // order repeat
   index=(index+1)%playlist.length;
   persistCurrentTrack();
-  await loadCurrent(true);
+  await loadCurrent(true,false,true);
 }
 // V4.19: single consolidated set of transport-state listeners. Each callback
 // carries the union of side effects that were previously split across two
@@ -2756,7 +2764,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=432',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=433',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -3137,7 +3145,35 @@ let mediaFiles=[];
     }
   });
   q('v352ProfilePick').onclick=()=>q('v352ProfileInput').click();
-  q('v352ProfileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{prof.image=r.result;prof._custom=true;saveProf()};r.readAsDataURL(f);e.target.value=''};
+  q('v352ProfileInput').onchange=e=>{
+    const file=e.target.files?.[0]; e.target.value='';
+    if(!file) return;
+    // V4.33: shrink the picked photo to a small thumbnail BEFORE saving. A full
+    // phone photo turned into a data URL is several MB and overflowed localStorage
+    // (~5MB), so saveProf() threw and the profile image silently never changed.
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          const MAX=512;
+          let w=img.naturalWidth||img.width||MAX, h=img.naturalHeight||img.height||MAX;
+          const s=Math.min(1, MAX/Math.max(w,h));
+          w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+          const c=document.createElement('canvas'); c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          prof.image=c.toDataURL('image/jpeg',0.85);
+          prof._custom=true;
+          saveProf();
+          toast2('프로필 사진을 변경했습니다.');
+        }catch(err){ toast2('이미지를 처리하지 못했습니다.'); }
+      };
+      img.onerror=()=>toast2('이미지를 불러오지 못했습니다.');
+      img.src=reader.result;
+    };
+    reader.onerror=()=>toast2('이미지를 불러오지 못했습니다.');
+    reader.readAsDataURL(file);
+  };
   q('v352Name').oninput=e=>{prof.name=e.target.value;saveProf()}; q('v352Tagline').oninput=e=>{prof.tagline=e.target.value;saveProf()};
   function updateMode(){
     document.querySelectorAll('[data-v352-mode]').forEach(b=>b.classList.toggle('on',b.dataset.v352Mode===vmode));
