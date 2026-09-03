@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.33</title>
+<title>말구씨 음악 앱 · V4.35</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -453,7 +453,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.33</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.35</span></div>
     </section>
     <section class="v352-section" id="v352InstallSection" hidden>
       <div class="v352-section-title">📲 홈 화면에 설치</div>
@@ -764,6 +764,9 @@ async function openMediaCacheDB(){
 async function cacheMediaFiles(files,replaceAll=true){
   // V4.18: never let one large MP4 abort the entire folder cache transaction.
   // Cache only files independently; playlist-linked files are additionally stored by trackId.
+  // V4.35: on Android/Chrome the folder handle re-reads originals after restart, so this
+  // extra byte cache is unnecessary — skip it to save space. (No effect on iOS.)
+  try{ if(await handleBasedRestoreAvailable()) return true; }catch(e){}
   try{
     const arr=Array.from(files||[]).filter(isMediaFile);
     const db=await openMediaCacheDB();
@@ -939,6 +942,11 @@ async function saveTrackFile(trackId,f){
     if(sz>0 && sz===Number(f.size||0) && await trackHasDurableCopy(trackId)) return true;
   }catch(e){}
 
+  // V4.35: on Android/desktop Chrome the folder handle persists, so the original file
+  // can be re-read after restart — no need to copy its bytes into app storage. This
+  // saves space. iOS has no such handle, so it always falls through and copies.
+  try{ if(await handleBasedRestoreAvailable()) return true; }catch(e){}
+
   // LARGE media: store real bytes in IndexedDB, chunked (memory-safe + durable).
   // Confirmed on-device: a small MP3 materialized into IndexedDB survives a restart,
   // while a large MP4 handed to Cache Storage as a File does not. So large files now
@@ -954,7 +962,9 @@ async function saveTrackFile(trackId,f){
     return idbOk;
   }
 
-  // SMALL media: materialize whole bytes → IndexedDB (durable) + Cache Storage (redundant).
+  // SMALL media: store real bytes in IndexedDB. Cache Storage is now only a FALLBACK
+  // when IndexedDB fails — NOT a second full copy. (V4.34: the old code kept both,
+  // which doubled the space every small song used. IndexedDB alone is durable.)
   let idbOk=false, apiOk=false;
   let durable=f;
   try{ durable=await materializeMediaBlob(f); }catch(e){ durable=f; }
@@ -973,6 +983,12 @@ async function saveTrackFile(trackId,f){
     try{ const chk=await loadTrackFile(trackId); idbOk=!!(chk && isMediaFile(chk) && Number(chk.size||0)>0); }
     catch(e){ idbOk=false; }
   }
+  if(idbOk){
+    // Reclaim space: drop any redundant Cache Storage copy left by older versions.
+    try{ if('caches' in window){const c=await caches.open(TRACK_CACHE_API); await c.delete(trackCacheRequest(trackId));} }catch(e){}
+    return true;
+  }
+  // IndexedDB did not persist → fall back to Cache Storage so the file is not lost.
   try{ apiOk=await saveTrackFileToCacheAPI(trackId,durable,meta); }
   catch(e){ console.warn('G1 saveTrackFile cache-api',e); }
   if(apiOk){
@@ -1057,12 +1073,14 @@ async function deleteTrackFile(trackId){
 async function cleanupOrphanTrackStorage(){
   let freed=0;
   const alive=new Set(playlist.map(t=>t.id));
+  const idbMain=new Set(); // track ids that have a real record in IndexedDB
   try{
     const db=await openTrackCacheDB();
     const keys=await idbPromise(db.transaction(TRACK_CACHE_STORE,'readonly').objectStore(TRACK_CACHE_STORE).getAllKeys());
     const orphans=new Set();
     for(const k of (keys||[])){
       const s=String(k);
+      if(!s.includes('::c::')) idbMain.add(s); // main/manifest record key IS the track id
       const tid=s.includes('::c::')?s.slice(0,s.indexOf('::c::')):s;
       if(tid && !alive.has(tid)) orphans.add(tid);
     }
@@ -1073,7 +1091,13 @@ async function cleanupOrphanTrackStorage(){
       const c=await caches.open(TRACK_CACHE_API);
       for(const req of await c.keys()){
         const m=req.url.split('/__malgussi_track_cache/')[1];
-        if(m){ let tid=''; try{tid=decodeURIComponent(m);}catch(e){tid=m;} if(tid && !alive.has(tid)) await c.delete(req); }
+        if(!m) continue;
+        let tid=''; try{tid=decodeURIComponent(m);}catch(e){tid=m;}
+        if(!tid) continue;
+        // Delete a Cache Storage copy when the track is gone (orphan) OR when the
+        // bytes already live in IndexedDB (V4.34: drop the old redundant 2nd copy).
+        // A Cache-only copy of a still-live track (IndexedDB write had failed) is kept.
+        if(!alive.has(tid) || idbMain.has(tid)) await c.delete(req);
       }
     }
   }catch(e){}
@@ -1087,6 +1111,23 @@ async function canUseSavedMusicDirectory(){
     return p==='granted';
   }catch(e){return false;}
 }
+// V4.35: TRUE on platforms (Android/desktop Chrome) that keep a persistent folder
+// handle with granted read permission. There, the original files can be re-read from
+// the folder after restart, so the app does NOT need to copy their bytes into its own
+// storage. iOS Safari has no such API, so this is always false there and files are
+// copied as before. Sticky-true because permission rarely changes within a session.
+let _handleRestoreAvailable=false;
+async function handleBasedRestoreAvailable(){
+  if(_handleRestoreAvailable) return true;
+  if(!('showDirectoryPicker' in window)) return false; // iOS: must copy
+  try{
+    const h=await loadMusicDirectoryHandle();
+    if(h && typeof h.queryPermission==='function'){
+      if((await h.queryPermission({mode:'read'}))==='granted'){ _handleRestoreAvailable=true; return true; }
+    }
+  }catch(e){}
+  return false;
+}
 // V4.19 G1 persistence invariant:
 // A playlist item is considered relinkable only when its trackId points to a
 // persisted File in IndexedDB or Cache Storage, OR when the saved folder can
@@ -1095,7 +1136,7 @@ async function canUseSavedMusicDirectory(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.33';
+const APP_VERSION='V4.35';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1371,11 +1412,22 @@ async function renderPlaylistDurableSummary(){
   if(!playlist.length){ el.innerHTML=''; return; }
   const my=++durableSummaryToken;
   el.textContent='앱 저장 상태 확인 중…';
+  // V4.35: on Android/Chrome the app does not copy files; it re-reads them from the
+  // saved folder. There, "durable" means "currently connected to the folder", so the
+  // summary counts live-connected tracks and shows a folder-based message.
+  const handleMode=await handleBasedRestoreAvailable();
+  if(my!==durableSummaryToken) return;
   let n=0;
-  for(const t of playlist){ if(await trackHasDurableCopy(t.id)) n++; }
+  for(const t of playlist){
+    const ok=handleMode ? !!(fileMap.get(t.id) && Number(fileMap.get(t.id).size||0)>0)
+                        : await trackHasDurableCopy(t.id);
+    if(ok) n++;
+  }
   if(my!==durableSummaryToken) return;
   const all=n===playlist.length;
-  let line=`앱에 저장됨(재실행 복원 가능): ${n} / ${playlist.length}곡`+(all?' ✓':' — 이 숫자가 곡 수와 같아야 재실행 후 복원됩니다');
+  let line=handleMode
+    ? `폴더에서 재생 준비됨: ${n} / ${playlist.length}곡`+(all?' ✓':' — 원본 폴더 접근이 필요합니다')
+    : `앱에 저장됨(재실행 복원 가능): ${n} / ${playlist.length}곡`+(all?' ✓':' — 이 숫자가 곡 수와 같아야 재실행 후 복원됩니다');
   // V4.27: show storage usage vs quota. If a file could not be saved, this reveals
   // whether the device offline-storage limit was reached.
   let usageLine='';
@@ -2764,7 +2816,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=433',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=435',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
