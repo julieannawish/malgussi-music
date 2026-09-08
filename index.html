@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.36</title>
+<title>말구씨 음악 앱 · V4.37</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -453,7 +453,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.36</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.37</span></div>
     </section>
     <section class="v352-section" id="v352InstallSection" hidden>
       <div class="v352-section-title">📲 홈 화면에 설치</div>
@@ -648,11 +648,29 @@ function setupMediaSessionHandlers(){
   safe('nexttrack',async()=>{try{await stepTo(1);}catch(e){}});
 }
 
+// V4.37: report playback position to the OS. A live Media Session position state
+// makes iOS treat this as ongoing media playback, which helps keep audio alive when
+// the app is sent to the background (multitasking).
+function updateMediaPositionState(){
+  if(!mediaSessionSupported() || typeof navigator.mediaSession.setPositionState!=='function') return;
+  const m=activeMedia||audio;
+  try{
+    const d=Number(m.duration);
+    if(Number.isFinite(d) && d>0){
+      navigator.mediaSession.setPositionState({
+        duration:d,
+        playbackRate:Number(m.playbackRate)||1,
+        position:Math.min(Math.max(0,Number(m.currentTime)||0),d)
+      });
+    }
+  }catch(e){}
+}
 function refreshMediaSessionForPlayback(){
   setupMediaSessionHandlers();
   updateMediaSessionMetadata(artworkMap.get(playlist[index]?.id));
   ensureCurrentArtworkForMediaSession().catch(()=>{});
   setMediaSessionState('playing');
+  updateMediaPositionState();
 }
 
 function updateMediaSessionMetadata(artworkOverride){
@@ -1136,7 +1154,7 @@ async function handleBasedRestoreAvailable(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.36';
+const APP_VERSION='V4.37';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -2594,6 +2612,10 @@ startProgressSync();
 // V4.25: cache each track's real duration the moment iOS finally exposes it.
 [[audio,'loadedmetadata'],[audio,'durationchange'],[video,'loadedmetadata'],[video,'durationchange']]
   .forEach(([el,ev])=>el.addEventListener(ev,captureCurrentDuration));
+// V4.37: keep the OS Media Session position current while playing (helps iOS keep
+// background audio alive when multitasking).
+[[audio,'timeupdate'],[audio,'loadedmetadata'],[audio,'playing'],[video,'timeupdate'],[video,'loadedmetadata'],[video,'playing']]
+  .forEach(([el,ev])=>el.addEventListener(ev,updateMediaPositionState));
 // V4.19: transport state listeners (play/pause/playing/ended) are consolidated
 // into a single block below to remove the previously duplicated registrations.
 video.addEventListener('playing',()=>{mediaActuallyPlaying=true;updateUI()});
@@ -2823,7 +2845,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=436',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=437',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
