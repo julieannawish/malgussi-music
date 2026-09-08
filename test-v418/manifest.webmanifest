@@ -1,0 +1,14 @@
+{
+  "id": "malgussi-test-v418",
+  "name": "말구씨 TEST V4.18",
+  "short_name": "TEST V4.18",
+  "start_url": "./?v=418test",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFFCF8",
+  "theme_color": "#FFFCF8",
+  "icons": [
+    { "src": "app-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "app-icon.png", "sizes": "1254x1254", "type": "image/png" }
+  ]
+}
