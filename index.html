@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app-icon.png">
 <link rel="icon" type="image/png" href="app-icon-192.png">
-<title>말구씨 음악 앱 · V4.37</title>
+<title>말구씨 음악 앱 · V4.38</title>
 <style>
 :root{--cream:#FFFCF8;--brown:#3A241A;--blue:#2457A6;--orange:#E87900;--pause:#2457A6}
 *{box-sizing:border-box}
@@ -453,7 +453,7 @@ html,body{width:100%;overflow:hidden;}
     </section>
     <section class="v352-section">
       <div class="v352-section-title">ⓘ 앱 정보 <span class="settings-chevron">›</span></div>
-      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.37</span></div>
+      <div class="v352-note">말구씨 음악 앱 · <span id="appVersion">V4.38</span></div>
     </section>
     <section class="v352-section" id="v352InstallSection" hidden>
       <div class="v352-section-title">📲 홈 화면에 설치</div>
@@ -622,9 +622,15 @@ function setupMediaSessionHandlers(){
       if(!playlist.length)return;
       const m=activeMedia||audio;
       // V4.30: lock-screen / Media Session play IS a user activation on iOS, so play
-      // with sound (fromUserGesture=true). Passing false made a previously-muted MP4
-      // stay silent and could suppress audio output.
-      if(!m || !m.src){
+      // with sound (fromUserGesture=true).
+      const t=playlist[index];
+      const isMp4=!!(t && isVideoFile(fileMap.get(t.id)||t));
+      // V4.38: pressing play on the lock screen for an MP4 → iOS blocks VIDEO, so
+      // (re)load it as audio-only. loadCurrent routes MP4→audio while the screen is
+      // hidden. This is why the lock-screen ▶ "did nothing" on video tracks.
+      if(isMp4 && document.visibilityState==='hidden' && activeMedia!==audio){
+        await loadCurrent(true,true,false);
+      }else if(!m || !m.src){
         await loadCurrent(true,true,false);
       }else{
         try{ m.muted=false; m.volume=1; }catch(e){}
@@ -686,21 +692,13 @@ function updateMediaSessionMetadata(artworkOverride){
   let fallback='./dog_default.png'; try{fallback=new URL('./dog_default.png',location.href).href}catch(e){}
 
   try{
-    const artwork=[];
-    if(cover){
-      artwork.push({
-        src:cover,
-        sizes:'512x512',
-        type:embedded?.mime||'image/jpeg'
-      });
-    }else{
-      artwork.push({src:fallback,sizes:'512x512',type:'image/png'});
-      artwork.push({
-        src:fallback,
-        sizes:'512x512',
-        type:'image/png'
-      });
-    }
+    // V4.38: declare the cover at several sizes. Car head units, CarPlay and the
+    // Bluetooth Now-Playing (AVRCP) picker choose a specific size and may show NO
+    // cover when only one size is offered — listing common sizes makes them match.
+    const src=cover||fallback;
+    const type=cover?(embedded?.mime||'image/jpeg'):'image/png';
+    const artwork=['96x96','128x128','192x192','256x256','384x384','512x512']
+      .map(sizes=>({src,sizes,type}));
 
     navigator.mediaSession.metadata=new MediaMetadata({
       title:t.name||'말구씨 음악',
@@ -1154,7 +1152,7 @@ async function handleBasedRestoreAvailable(){
 // G1 scope only: file discovery, track binding, persistence, and relink.
 // Playback, autoplay, Media Session, lock-screen, and UI behavior are intentionally
 // not redesigned in this package; those belong to later groups.
-const APP_VERSION='V4.37';
+const APP_VERSION='V4.38';
 const KEY='playlist_index_v321'; // keep existing playlist index
 const CURRENT_INDEX_KEY='malgussi_current_index_v1';
 const CURRENT_TRACK_ID_KEY='malgussi_current_track_id_v1';
@@ -1883,6 +1881,12 @@ async function playActiveMedia(fromUserGesture=false){
     return false;
   }
 }
+// V4.38: an MP4 should play as audio-only when it is NOT a deliberate in-app tap —
+// i.e. auto-advance (no user gesture) or while the screen is locked/backgrounded.
+function shouldPlayMp4AsAudio(fromUserGesture){
+  try{ if(document.visibilityState==='hidden') return true; }catch(e){}
+  return !fromUserGesture;
+}
 async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   const loadToken=++mediaLoadToken;
   if(!playlist.length){updateUI();return false}
@@ -2008,10 +2012,30 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
     artworkMap.set(t.id,currentArtwork);
   }
 
+  // V4.38: play an MP4 as AUDIO-ONLY when it is auto-advanced, or when the screen is
+  // locked/backgrounded. iOS blocks VIDEO playback in those cases (silent/stopped),
+  // but audio is allowed — so route the MP4's sound through the <audio> element and
+  // show its cover. A deliberate MP4 tap while the app is open still plays as video.
+  let mp4AsAudio=false;
+  if(isVideoFile(f) && autoplay && shouldPlayMp4AsAudio(fromUserGesture)){
+    mp4AsAudio=true;
+    try{ video.pause(); }catch(e){}
+    try{ video.muted=false; }catch(e){}
+    audio.src=objectUrl; audio.muted=false; audio.volume=1;
+    try{ audio.load(); }catch(e){}
+    activeMedia=audio;
+    showArtworkFrame();
+    const cu=currentArtwork?artworkToUrl(currentArtwork):null;
+    $('mainImage').src=cu||'dog_default.png';
+    $('mainImage').alt=cu?'앨범 커버':'말구씨 기본 강아지 이미지';
+    $('mainImage').hidden=false; $('mainImage').style.display='block';
+    if(cu)$('mainImage').dataset.url=cu;
+  }
+
   activeMedia.load();
   syncMediaUI();
   let playSucceeded=false;
-  if(isVideoFile(f)){
+  if(isVideoFile(f) && !mp4AsAudio){
     // IMPORTANT: merely loading/relinking a playlist item must NOT start MP4.
     // Only an explicit autoplay request (for example, returning to the main
     // screen after the user closes playlist management) may start playback.
@@ -2046,6 +2070,8 @@ async function loadCurrent(autoplay,fromUserGesture=false,fastBoot=false){
   // Do not leave stale error/instruction text on a valid media item.
   if(f && (!isVideoFile(f) || playSucceeded || !autoplay)) $('status').textContent='';
   updateUI();
+  // V4.38: move the "현재 재생" highlight to this track if the playlist screen is open.
+  try{ window.__refreshPlaylistCurrent && window.__refreshPlaylistCurrent(true); }catch(e){}
   return playSucceeded || !autoplay;
 }
 
@@ -2845,7 +2871,7 @@ loadIndex();
     reloaded=true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js?v=437',{updateViaCache:'none'})
+  navigator.serviceWorker.register('./sw.js?v=438',{updateViaCache:'none'})
     .then(function(reg){
       return reg.update().then(function(){
         if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
@@ -3003,12 +3029,28 @@ let mediaFiles=[];
   function scrollPlaylistToCurrent(){
     const box=q('v352PlaylistList');
     if(!box || !playlist.length) return;
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const doScroll=()=>{
       const ci=playlist.findIndex(t=>t.id===currentTrackId);
       const row=box.querySelector(`.v352-pl-row[data-i="${ci}"]`);
       if(row) row.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});
-    }));
+    };
+    // Run after layout settles; a timeout also covers the just-opened screen where
+    // rAF can fire before the panel has its real height.
+    requestAnimationFrame(()=>requestAnimationFrame(doScroll));
+    setTimeout(doScroll,140);
   }
+  // V4.38: keep the "▶ 현재 재생" highlight on the right row while playback advances
+  // and the playlist screen is open (loadCurrent does not re-render this list, so the
+  // highlight used to stay on the previous song). Exposed for loadCurrent to call.
+  window.__refreshPlaylistCurrent=function(scroll){
+    const screen=q('v352Playlist');
+    if(!screen || !screen.classList.contains('open')) return;
+    document.querySelectorAll('#v352PlaylistList .v352-pl-row').forEach(row=>{
+      const id=playlist[Number(row.dataset.i)]?.id;
+      row.classList.toggle('current-playing', !!id && id===currentTrackId);
+    });
+    if(scroll) scrollPlaylistToCurrent();
+  };
   let playlistWasPlaying=false;
   let playlistOpenedIndex=-1;
   async function open(id){
